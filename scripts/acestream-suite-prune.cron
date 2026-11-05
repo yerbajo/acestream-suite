@@ -1,0 +1,24 @@
+# Deletes the acestream-suite channels that are not online, once the verification has finished.
+#
+# Installed by hand on dev.albertucho.home:
+#   install -m 0755 scripts/acestream-suite-prune.py /usr/local/bin/acestream-suite-prune
+#   install -m 0644 scripts/acestream-suite-prune.cron /etc/cron.d/acestream-suite-prune
+#   /usr/local/bin/acestream-suite-prune --dry-run     # what it would do right now, touching nothing
+#
+# This is a ONE-SHOT job. Every run asks the database two things: how many channels have never been
+# checked, and how many are checked and not alive. While there is anything unchecked it writes one
+# line to /var/log/acestream-suite-prune.log and leaves. When the verification has finished it takes the
+# backup (/backup/acelist/<stamp>/: the three playlists, the full export, a copy of the database and
+# the list of what it is about to delete), deletes through acestream-suite's own API — which takes the check
+# history and the screenshots with each channel — regenerates the playlists and writes a guard in
+# /var/lib/acestream-suite-prune/done. From then on every run is a no-op, so this cron entry can stay.
+#
+# Every 20 minutes, off the hour and the half hour: the check is a single count against SQLite, and
+# the job needs to notice "the verification just finished" promptly. It takes its own flock, so a
+# run that overlaps the previous one says so and exits.
+#
+# --force exists for the case where the queue was lost (a container restart drops it): it deletes
+# what is already known to be dead without waiting, still never touching an unchecked channel.
+SHELL=/bin/bash
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin
+10,30,50 * * * * root /usr/local/bin/acestream-suite-prune >/dev/null 2>&1

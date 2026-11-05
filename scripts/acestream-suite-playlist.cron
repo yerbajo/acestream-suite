@@ -1,0 +1,20 @@
+# acestream-suite's catalog as an M3U playlist for the house players (VLC, Kodi, Dispatcharr).
+#
+# Installed by hand on dev.albertucho.home:
+#   install -m 0755 scripts/acestream-suite-playlist.py /usr/local/bin/acestream-suite-playlist
+#   install -m 0644 scripts/acestream-suite-playlist.cron /etc/cron.d/acestream-suite-playlist
+#
+# The link it keeps alive is http://192.168.1.245/varios/acestream-suite.m3u, served by the Caddy that
+# already serves /srv/www/varios over plain HTTP.
+#
+# Every fifteen minutes, offset from the hour and the half hour so it never meets a backup:
+# what changes between runs is the catalog (channels added or removed in acestream-suite), not the
+# streams, and the whole job is one JSON fetch plus one file write. The script writes only when
+# the content differs, so an unchanged playlist keeps its mtime and nothing watching the file
+# (Dispatcharr refreshes on its own schedule) has a reason to react.
+#
+# The script takes its own flock and logs to /var/log/acestream-suite-playlist.log, so there is nothing
+# to collect here: a run that overlaps the previous one says so in that log and exits.
+SHELL=/bin/bash
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin
+5,20,35,50 * * * * root /usr/local/bin/acestream-suite-playlist >/dev/null 2>&1

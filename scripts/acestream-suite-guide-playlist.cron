@@ -1,0 +1,25 @@
+# acestream-suite's catalogue as an M3U playlist that carries the guide.
+#
+# Installed through scripts/crons-install.sh (this file is in its JOBS list; the host crontab is
+# generated from it, never edited by hand).
+#
+# The link it keeps alive is http://192.168.1.245/varios/acestream-suite-guide.m3u, served by the same Caddy
+# that already serves /srv/www/varios over plain HTTP.
+#
+# IT IS NOT THE LIST THE TV READS TODAY. The TV reads hls.m3u, kept by acestream-suite-playlist.cron,
+# and it is left alone on purpose: that list's `tvg-id` is the AceStream content id of every stream
+# and it is what Dispatcharr account 4 consumes, so rewriting it in place would re-map the live
+# line-up. This job only ever writes its own file, so the owner can point a player or an account at
+# the new list when the guide has earned it. Its old name, acelist-epg.m3u, is written too as a copy
+# while this version lasts (S4).
+#
+# Every fifteen minutes, offset from acestream-suite-playlist's own 5,20,35,50 so the two jobs never fetch
+# at the same instant. What changes between runs is the catalogue (channels added or removed), not
+# the streams or the guide: one JSON export, one mapping fetch, one file write. The script writes
+# only when the content differs, so an unchanged playlist keeps its mtime.
+#
+# The script takes its own flock and logs to /var/log/acestream-suite-guide-playlist.log, so there is nothing
+# to collect here: a run that overlaps the previous one says so in that log and exits.
+SHELL=/bin/bash
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin
+7,22,37,52 * * * * root /usr/local/bin/acestream-suite-guide-playlist >/dev/null 2>&1

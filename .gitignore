@@ -1,0 +1,23 @@
+# Application state: the SQLite database and the screenshots. The catalogue is not versioned.
+data/
+
+# Environment: `.env` holds this deployment's values. `.env.example` is the template and is committed.
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Editor and tool caches
+.DS_Store
+.idea/
+.vscode/
+*.swp
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/

@@ -1,0 +1,30 @@
+# acestream-suite's guide, refreshed from its XMLTV sources.
+#
+# Installed through scripts/crons-install.sh (this file is in its JOBS list, and the host crontab is
+# generated from it; /etc/cron.d is never edited by hand on this host).
+#
+# Why a host cron and not a timer inside the container: the image is the app's, nothing in it runs
+# on a schedule (the entrypoint migrates and serves), and a second entrypoint that slept in a loop
+# would be one more thing to keep in step with the app. The refresh is a command, and the host
+# already runs a cron for the playlist acestream-suite publishes.
+#
+# The interval is the one the deployment declares: ACESTREAM_SUITE_EPG_REFRESH_HOURS=12 in
+# acestream-suite/docker-compose.yml (la clave del contenedor conserva el segmento EPG; el intervalo,
+# 12 horas, no cambia). A crontab cannot read a compose file, so the two are kept in step by hand —
+# the same coupling acestream-suite-playlist.cron has with its own script. 12 h because the
+# providers publish a day or two of listings and re-cut a few times a day; more often is bandwidth
+# for nothing. Measured on 2026-10-14: a full refresh of both sources is ~1 min and ~25,000
+# programmes in the window, and it prunes what has gone past as it goes.
+#
+# 04:07 and 16:07 and not `*/12`, which would fire on the hour and meet the nightly backups. The
+# offset is deliberate, in the spirit of the playlist job's 5,20,35,50.
+#
+# flock because the command can also be run by hand while this fires — verified that way when it
+# was installed — and two refreshes at once would fight over the same SQLite file.
+#
+# The command reports per source and exits non-zero only when no source answered at all, so a moved
+# community feed leaves a line in this log and keeps the previous guide. Nothing rotates the log:
+# one run is a handful of lines, and a failed one is worth finding.
+SHELL=/bin/bash
+PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin
+7 4,16 * * * root /usr/bin/flock -n /var/lock/acestream-suite-guide-refresh.lock docker exec acestream-suite python3 -m app.cli epg-refresh >>/var/log/acestream-suite-guide-refresh.log 2>&1

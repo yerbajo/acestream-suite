@@ -1,0 +1,184 @@
+# acestream-suite — an AceStream front end on dev.albertucho.home (192.168.1.245), LAN only.
+#
+#   cd /opt/acestream-suite && docker compose build && docker compose up -d
+#   http://192.168.1.245:8083
+#
+# WHAT ACEList IS: a catalogue of AceStream links — channels with a Content ID, an availability
+# check against the engine, a screenshot, categories, search — and a play button. Upstream is a
+# desktop app: it launches VLC through a subprocess and binds to 127.0.0.1. This deployment runs it
+# headless on a host that has no player, so the play button hands the stream URL to whoever asked
+# (`acestream-suite/acestream-suite-lan.patch`, three small hunks, read against upstream v1.3.0; the reasoning for
+# each one is in odd/tasks/acelist.md).
+#
+# NO BROWSER PLAYER, AND WHY. The owner asked for one, and a bridge (`acexy`) was built and tried on
+# 2026-10-09. It was removed the same day, on evidence: the engine's HLS entry point
+# (`/ace/manifest.m3u8`) redirects to `/ace/m/<infohash>/<token>.m3u8`, and that URL never sends a
+# single header — 30 s and 45 s probes, three channels, and once with a session already in `dl`
+# downloading at full rate. `acexy`'s only browser-playable mode is exactly that call, and its own
+# README calls M3U8 mode "non-tested ... not guaranteed to work". So the page offers the engine link
+# and nothing pretends to play it. A picture in the browser needs the engine to serve a manifest
+# (another build), or a bridge that re-packages the MPEG-TS itself: a separate task, deliberately
+# not smuggled in here.
+#
+# WHY IT POINTS AT THE OTHER HOST: the engine it talks to is NOT the one running on this machine.
+# 192.168.1.245 already has `ghcr.io/martinbjeldbak/acestream-http-proxy` (engine 3.2.11) on
+# 6878/8621, and that engine's P2P leaves through the house IP with no tunnel. The house decided on
+# 2026-10-06 (see odd/tasks/acestream-search.md, in the suite-aar repository) that AceStream P2P goes
+# through the WireGuard tunnel, which is why the search service was built on the other VM at all. So
+# the engine used here is the one on **192.168.1.28**, inside its Gluetun tunnel, reached over the
+# LAN on port 8081 — the nginx of that stack's `acestream` container, which proxies the engine's
+# whole HTTP API and rewrites the engine's `http://localhost:6878/...` URLs to the address you asked
+# on. One base URL is therefore enough for the API and for the playback link (the app rebases every
+# engine URL onto it — `app/acestream/client.py`, `_rebase`).
+#
+# This is why nothing on .28 had to change for this deployment: no new port published by Gluetun, no
+# Gluetun recreation, no engine upgrade. 8081 was already published.
+
+name: acestream-suite
+
+services:
+  acestream-suite:
+    container_name: acestream-suite
+    # Built here, from acestream-suite/Dockerfile. Upstream publishes no image at all (Windows-only project),
+    # and the build is pinned by release version AND sha256, so `docker compose build` is
+    # reproducible. The tag is the version it was built from: `docker compose pull` must NEVER touch
+    # it, which is why it is not on any registry.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: acestream-suite:1.3.0
+    restart: unless-stopped
+    # The image's base is python:3.12-slim, whose default user is root. Everything this app writes
+    # lands in the bind mount below (acelist.db + screenshots/), so it runs as the host's
+    # `ingenieria` account and that directory is chowned 1000:1000 before the first `up -d`.
+    user: "1000:1000"
+    environment:
+      - TZ=Europe/Madrid
+      # The tunneled engine on the other VM, through the nginx that proxies it. Verified from this
+      # host on 2026-10-09: `/webui/api/service?method=get_version` answers 3.2.11, `/search?query=`
+      # answers JSON, and `/ace/getstream?infohash=` answers 302 with a Location already rewritten
+      # to http://192.168.1.28:8081/ace/r/<hash>/<token> — a link that opens directly from the LAN.
+      #
+      # This is only the DEFAULT: the engine URL is a saved setting in the app (stored values win
+      # over the environment), so the owner can point it elsewhere from the settings page without
+      # rebuilding anything.
+      # Every value a deployment differs on comes from `.env` (compose substitutes it here), and the
+      # default is the safe one for a fresh host: an engine on the same machine, loopback only.
+      - ACESTREAM_SUITE_ENGINE_URL=${ACESTREAM_SUITE_ENGINE_URL:-http://127.0.0.1:6878}
+      # The addresses the browser types. Upstream hardcodes [127.0.0.1, localhost] and uses that list
+      # for BOTH the Host header check and the CSRF origin check; without this the LAN gets 400 on
+      # every request and 403 on every write. Keep the CSRF defence working by listing the real
+      # addresses instead of bypassing it.
+      # `dev.albertucho.home` resolves to this host in the house BIND zone (192.168.1.2).
+      - ACESTREAM_SUITE_ALLOWED_HOSTS=${ACESTREAM_SUITE_ALLOWED_HOSTS:-}
+      # No VLC exists here and launching one from a container would be pointless: in `url` mode the
+      # app starts the engine session and hands the URL to the page instead of to a local player.
+      # The engine session is still started — that is what makes it begin buffering.
+      - ACESTREAM_SUITE_PLAYBACK_MODE=${ACESTREAM_SUITE_PLAYBACK_MODE:-url}
+      # The engine's dialect: the Linux 3.2.11 build streams only with `infohash=` and answers
+      # `failed to load content` to `id=`, which is what upstream sends (its engine is the Windows
+      # 3.1.74 one). Verified on 2026-10-09 by asking this engine both ways and by sending both
+      # parameters at once: `id` wins and the request still fails, so this replaces it.
+      - ACESTREAM_SUITE_STREAM_PARAM=${ACESTREAM_SUITE_STREAM_PARAM:-infohash}
+      # Upstream's default, stated because it is a real cost: every check is a LIVE engine session,
+      # so this is also how many channels can be verified at once on the other VM.
+      - ACESTREAM_SUITE_CHECK_CONCURRENCY=${ACESTREAM_SUITE_CHECK_CONCURRENCY:-2}
+      # --- The guide (EPG) -------------------------------------------------------------------
+      # This service is the one that carries the guide. The work was built and proved in a duplicate
+      # deployment called AceListEPG (odd/tasks/acelist-epg.md) and merged here on 2026-10-14: the
+      # same image now applies acestream-suite-guide.patch on top of acestream-suite-lan.patch, and
+      # the guide's tables
+      # arrive through the app's own migrations (`0004_epg`, `0005_epg_mapping`) on this service's
+      # database. The duplicate was deleted after this deployment was verified.
+      #
+      # The XMLTV sources, as a JSON list of URLs (a list because the catalogue is 19 categories of
+      # mixed origin and no single provider covers it; both verified on 2026-10-13): tdtchannels
+      # is 5.0 MB / 184 channels of the Spanish national and Movistar+ line-up, epgshare01 ES1 is
+      # 24.2 MB / 373 channels and the only one of the two that carries DAZN. Sources are a cache
+      # and never a dependency: a dead or moved URL degrades the guide and must not fail a request.
+      - 'ACESTREAM_SUITE_EPG_SOURCES=${ACESTREAM_SUITE_EPG_SOURCES:-["https://www.tdtchannels.com/epg/TV.xml.gz","https://epgshare01.online/epgshare01/epg_ripper_ES1.xml.gz"]}'
+      # How far ahead of `now` the guide is kept. 72 h is what a TV grid shows; pruning is what stops
+      # a 24 MB refresh every 12 h from piling up (measured: a full refresh is ~1 min and ~25,000
+      # programmes in the window, and it deletes what has gone past as it goes).
+      - ACESTREAM_SUITE_EPG_WINDOW_HOURS=${ACESTREAM_SUITE_EPG_WINDOW_HOURS:-72}
+      # How often the refresh is MEANT to run. Nothing reads it yet: the refresh is a command, and
+      # `scripts/acestream-suite-guide-refresh.cron` carries the same interval by hand (04:07 and 16:07).
+      # It sits here so the interval is decided in one place and visible in the deployment.
+      - ACESTREAM_SUITE_EPG_REFRESH_HOURS=${ACESTREAM_SUITE_EPG_REFRESH_HOURS:-12}
+    volumes:
+      # The whole application state: `acelist.db` (SQLite) and `screenshots/`. `./data` resolves
+      # against this file, so the host copy at /opt/acestream-suite/docker-compose.yml uses
+      # /opt/acestream-suite/data, which is a symlink to the data the old name left in
+      # /opt/acelist/data (S5: the data does not move in this feature).
+      #
+      # Docker creates a MISSING bind source as a root-owned empty directory — the wrong owner for
+      # the 1000:1000 above. Create and chown it before the first `up -d`.
+      #
+      # `:z` is kept for honesty, the same call made in sportarr/ and madness/: `docker info
+      # --format '{{.SecurityOptions}}'` on this host returns no `selinux`, so dockerd applies no
+      # relabel even though `getenforce` says Enforcing.
+      - ./data:/data:z
+    ports:
+      # 8083 on the host, 8000 inside (the app's own default). 8083 was verified free on
+      # 2026-10-09: 8080 is Nextcloud, 8081 is Vaultwarden (loopback-only) and 8181/8443 are pihole.
+      # Plain LAN publish, no reverse proxy — the same shape as FrankMD 3012, madness 3010 and
+      # Sportarr 1867 on this host. Nothing in the app derives a URL from the published port.
+      - "${ACESTREAM_SUITE_PORT:-8080}:8000"
+    healthcheck:
+      # Upstream's own endpoint, the one the launcher uses to tell AceList from another program on
+      # the same port. It answers from the app itself, not from the engine, so an unreachable engine
+      # does NOT make the container unhealthy — that is a state the UI reports on its own.
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Puente HLS: lee el MPEG-TS del motor y lo sirve en segmentos, para reproductores de TV que
+  # prefieren HLS (el motor 3.2.11 no sirve manifiesto y Dispatcharr 0.31.0 no monta su hls_proxy).
+  #
+  # Reutiliza la imagen de acestream-suite a propósito: ya trae ffmpeg y python3, y así no hay una segunda
+  # imagen que actualizar. `entrypoint` sustituye al de la imagen (que arrancaría la app otra vez).
+  # Corre como root porque escribe en el tmpfs /hls, que Docker monta propiedad de root.
+  acestream-suite-hls:
+    container_name: acestream-suite-hls
+    image: acestream-suite:1.3.0
+    entrypoint: ["python3", "-u", "/hls-bridge.py"]
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Madrid
+      - PORT=8084
+      # El motor tunelado de la VM de medios, igual que en el servicio de arriba.
+      - ACESTREAM_PUBLIC=http://192.168.1.28:8081
+      # Cuánto aguanta una sesión sin que nadie pida nada, y tope de sesiones a la vez.
+      - HLS_IDLE_SECONDS=45
+      - HLS_MAX_SESSIONS=4
+      # Aviso de tmpfs: por debajo de estos MB libres el reaper cierra la sesión que más bytes ocupa.
+      # Existe porque un tmpfs lleno no rompe una sesión, rompe todas a la vez (ffmpeg deja de poder
+      # escribir segmentos en cualquiera de ellas), y la ventana de 240 segmentos hace que dos canales
+      # de 1080p se acerquen a los 2 GB de abajo.
+      - HLS_MIN_FREE_MB=256
+      # El primer segmento dura 1 s (los demas 2): al cambiar de canal la tele espera menos, que es
+      # justo el momento en el que se ve el "almacenando en bufer". Y el tope de espera a un canal
+      # que no arranca baja de 15 a 8 s para que falle antes en vez de dar vueltas.
+      - HLS_INIT_TIME=1
+      - HLS_STARTUP_SECONDS=8
+      # Alias de Content ID: el enlace que ya tenga cargado un reproductor sigue funcionando cuando
+      # en el catalogo se cambia la fuente de ese canal por otra mejor (2026-10-18: "M. LaLiga"
+      # cambio de c1959a27 -2 pares, ~400 KB/s, con deficit- a dbda04d4 -11 pares, ~1,5 MB/s-).
+      # 2026-10-20: "M. Liga de Campeones" (dfa66881, 1080p) producia a 0,9x tiempo real en el
+      # puente y la tele repetia "almacenando en bufer" cada ~20 s; su fuente alternativa 8fe5f9fd
+      # (720p) midio 899 KB/s con el primer byte a los 2,4 s. Se le da la buena al mismo enlace.
+      # Aliases are per-deployment (they name content ids somebody publishes), so they come from
+      # `.env`; empty is the right default and the bridge simply serves what it is asked for.
+      - 'HLS_ALIASES=${HLS_ALIASES:-}'
+    volumes:
+      - ./hls-bridge.py:/hls-bridge.py:ro
+    tmpfs:
+      # Los segmentos, en RAM. Con la ventana de 240 segmentos del puente son ~360 MB por sesión a
+      # 1,5 MB por segmento (~450 MB con los 60 de margen), y hasta ~900 MB en un 1080p de 1,5 MB/s:
+      # 2 GB dan para dos sesiones de ese tamaño, no para las cuatro del tope. Por eso el puente
+      # vigila el espacio libre (HLS_MIN_FREE_MB) en vez de confiar en que quepa.
+      - /hls:size=2g
+    ports:
+      - "8084:8084"
