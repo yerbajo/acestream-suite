@@ -98,8 +98,98 @@
      created_by: Mapped[str] = mapped_column(String(100), default="")
      created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
      updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
+--- a/app/launcher.py	2026-10-08 21:43:53.000000000 +0200
++++ b/app/launcher.py	2026-11-05 22:36:02.330434967 +0100
+@@ -29,7 +29,7 @@
+ 
+ 
+ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+-    parser = argparse.ArgumentParser(prog="AceList", description="Catálogo local de Ace Stream.")
++    parser = argparse.ArgumentParser(prog="acestream-suite", description="Catálogo local de Ace Stream.")
+     parser.add_argument(
+         "--port", type=int, help=f"puerto local (por defecto {DEFAULT_PORT} o el siguiente libre)"
+     )
+@@ -37,22 +37,22 @@
+     return parser.parse_args(argv)
+ 
+ 
+-def is_acelist(port: int, timeout: float = 2.0) -> bool:
+-    """Whether an AceList server answers on this port (not some other program)."""
++def is_acestream_suite(port: int, timeout: float = 2.0) -> bool:
++    """Whether an acestream-suite server answers on this port (not some other program)."""
+     try:
+         response = httpx.get(f"http://{HOST}:{port}/health", timeout=timeout)
+-        return response.status_code == 200 and response.json().get("app") == "AceList"
++        return response.status_code == 200 and response.json().get("app") == "acestream-suite"
+     except (httpx.HTTPError, ValueError):
+         return False
+ 
+ 
+ def running_port(state_file: Path = STATE_FILE) -> int | None:
+-    """The port of an AceList already running for this data folder, if any."""
++    """The port of an acestream-suite already running for this data folder, if any."""
+     try:
+         port = int(json.loads(state_file.read_text(encoding="utf-8"))["port"])
+     except (OSError, ValueError, KeyError, TypeError):
+         return None
+-    return port if is_acelist(port) else None
++    return port if is_acestream_suite(port) else None
+ 
+ 
+ def port_is_free(port: int) -> bool:
+@@ -77,7 +77,7 @@
+ 
+ 
+ def upgrade_database(database_url: str = DATABASE_URL) -> None:
+-    """Creates or updates the database with the migrations that ship with AceList."""
++    """Creates or updates the database with the migrations that ship with acestream-suite."""
+     config = Config(str(RESOURCE_DIR / "alembic.ini"))
+     config.set_main_option("script_location", str(RESOURCE_DIR / "migrations"))
+     # ConfigParser treats "%" as interpolation: a path containing one must be escaped.
+@@ -95,7 +95,7 @@
+     """Opens the browser once the server answers; False if it never did."""
+     deadline = time.monotonic() + timeout
+     while time.monotonic() < deadline:
+-        if is_acelist(port, timeout=1.0):
++        if is_acestream_suite(port, timeout=1.0):
+             opener(url)
+             return True
+         time.sleep(0.25)
+@@ -127,14 +127,14 @@
+             # UTF-8 and a line at a time, also when the output goes to a file or a pipe
+             # (the console already gets UTF-8; a pipe would get the ANSI code page).
+             stream.reconfigure(encoding="utf-8", line_buffering=True)
+-    set_console_title("AceList")
+-    print(f"AceList {__version__}")
++    set_console_title("acestream-suite")
++    print(f"acestream-suite {__version__}")
+     print(f"Datos: {DATA_DIR}")
+ 
+     existing = running_port()
+     if existing is not None:
+         url = f"http://{HOST}:{existing}/"
+-        print(f"AceList ya está abierto en {url}")
++        print(f"acestream-suite ya está abierto en {url}")
+         if not args.no_browser:
+             webbrowser.open(url)
+         return 0
+@@ -144,12 +144,12 @@
+         print("Preparando la base de datos…")
+         upgrade_database()
+     except Exception as exc:  # noqa: BLE001 - the person needs to read why, whatever it is
+-        print(f"\nNo se pudo iniciar AceList: {exc}")
++        print(f"\nNo se pudo iniciar acestream-suite: {exc}")
+         return 1
+ 
+     url = f"http://{HOST}:{port}/"
+     STATE_FILE.write_text(json.dumps({"port": port}), encoding="utf-8")
+-    print(f"\nAceList funciona en {url}")
++    print(f"\nacestream-suite funciona en {url}")
+     print("Deja esta ventana abierta mientras lo uses; ciérrala o pulsa Ctrl+C para salir.\n")
+     if not args.no_browser:
+         threading.Thread(target=open_when_ready, args=(url, port), daemon=True).start()
 --- a/app/main.py	2026-11-05 20:32:14.031470459 +0100
-+++ b/app/main.py	2026-11-05 21:19:53.352457214 +0100
++++ b/app/main.py	2026-11-05 22:35:32.594035685 +0100
 @@ -11,19 +11,26 @@
  
  from app import __version__
@@ -148,6 +238,15 @@
  app.include_router(engine_routes.router)
  app.include_router(epg_routes.router)
  
+@@ -90,7 +98,7 @@
+ @app.get("/health")
+ def health() -> dict[str, str]:
+     # "app" lets the launcher tell AceList from another program on the same port.
+-    return {"status": "ok", "app": "AceList", "version": __version__}
++    return {"status": "ok", "app": "acestream-suite", "version": __version__}
+ 
+ 
+ def run() -> None:
 --- a/app/services/epg_matching.py	2026-11-05 20:32:14.031866042 +0100
 +++ b/app/services/epg_matching.py	2026-11-05 21:18:18.527621349 +0100
 @@ -22,6 +22,7 @@
@@ -1460,6 +1559,96 @@ Los archivos binarios /tmp/acestream-suite-src/epg/app/web/static/favicon.ico y 
      monkeypatch.delenv("USER", raising=False)
      monkeypatch.delenv("LOGNAME", raising=False)
  
+--- a/tests/test_health.py	2026-10-08 21:43:53.000000000 +0200
++++ b/tests/test_health.py	2026-11-05 22:35:32.594362333 +0100
+@@ -8,7 +8,7 @@
+     response = TestClient(app, base_url="http://127.0.0.1").get("/health")
+ 
+     assert response.status_code == 200
+-    assert response.json() == {"status": "ok", "app": "AceList", "version": __version__}
++    assert response.json() == {"status": "ok", "app": "acestream-suite", "version": __version__}
+ 
+ 
+ def test_server_binds_to_loopback_only():
+--- a/tests/test_launcher.py	2026-10-08 21:43:53.000000000 +0200
++++ b/tests/test_launcher.py	2026-11-05 22:36:02.331460099 +0100
+@@ -59,25 +59,25 @@
+         launcher.choose_port()
+ 
+ 
+-# telling AceList from another program
++# telling acestream-suite from another program
+ 
+ 
+ def test_acelist_is_recognized_by_its_health_answer(respx_mock):
+-    health(respx_mock, 8000, status="ok", app="AceList", version=__version__)
++    health(respx_mock, 8000, status="ok", app="acestream-suite", version=__version__)
+     health(respx_mock, 8001, status="ok")
+     respx_mock.get("http://127.0.0.1:8002/health").mock(side_effect=httpx.ConnectError("off"))
+     respx_mock.get("http://127.0.0.1:8003/health").respond(text="<html>")
+ 
+-    assert launcher.is_acelist(8000)
+-    assert not launcher.is_acelist(8001)
+-    assert not launcher.is_acelist(8002)
+-    assert not launcher.is_acelist(8003)
++    assert launcher.is_acestream_suite(8000)
++    assert not launcher.is_acestream_suite(8001)
++    assert not launcher.is_acestream_suite(8002)
++    assert not launcher.is_acestream_suite(8003)
+ 
+ 
+ def test_running_instance_comes_from_the_state_file(state_file, respx_mock):
+     assert launcher.running_port(state_file) is None  # no file
+     state_file.write_text(json.dumps({"port": 8007}), encoding="utf-8")
+-    health(respx_mock, 8007, app="AceList")
++    health(respx_mock, 8007, app="acestream-suite")
+ 
+     assert launcher.running_port(state_file) == 8007
+ 
+@@ -120,7 +120,7 @@
+ 
+ def test_the_browser_opens_once_the_server_answers(monkeypatch):
+     answers = iter([False, False, True])
+-    monkeypatch.setattr(launcher, "is_acelist", lambda port, timeout: next(answers))
++    monkeypatch.setattr(launcher, "is_acestream_suite", lambda port, timeout: next(answers))
+     monkeypatch.setattr(launcher.time, "sleep", lambda seconds: None)
+     opened = []
+ 
+@@ -129,7 +129,7 @@
+ 
+ 
+ def test_the_browser_is_not_opened_if_the_server_never_answers(monkeypatch):
+-    monkeypatch.setattr(launcher, "is_acelist", lambda port, timeout: False)
++    monkeypatch.setattr(launcher, "is_acestream_suite", lambda port, timeout: False)
+     opened = []
+ 
+     assert not launcher.open_when_ready("u", 8000, opener=opened.append, timeout=0)
+@@ -165,8 +165,8 @@
+     assert quiet_start["served"] == [(8004, {"port": 8004})]
+     assert not state_file.exists()  # removed when the server stops
+     out = capsys.readouterr().out
+-    assert f"AceList {__version__}" in out
+-    assert "AceList funciona en http://127.0.0.1:8004/" in out
++    assert f"acestream-suite {__version__}" in out
++    assert "acestream-suite funciona en http://127.0.0.1:8004/" in out
+ 
+ 
+ def test_start_with_a_requested_port(quiet_start):
+@@ -194,7 +194,7 @@
+     assert quiet_start["opened"] == ["http://127.0.0.1:8009/"]
+     assert quiet_start["served"] == []
+     assert quiet_start["upgraded"] == 0
+-    assert "AceList ya está abierto en http://127.0.0.1:8009/" in capsys.readouterr().out
++    assert "acestream-suite ya está abierto en http://127.0.0.1:8009/" in capsys.readouterr().out
+ 
+ 
+ def test_a_failure_before_serving_is_explained(monkeypatch, quiet_start, capsys):
+@@ -207,4 +207,4 @@
+ 
+     assert code == 1
+     assert quiet_start["served"] == []
+-    assert "No se pudo iniciar AceList: no hay puertos libres" in capsys.readouterr().out
++    assert "No se pudo iniciar acestream-suite: no hay puertos libres" in capsys.readouterr().out
 --- a/tests/test_packaging.py	2026-10-08 21:43:53.000000000 +0200
 +++ b/tests/test_packaging.py	2026-11-05 21:19:42.192624448 +0100
 @@ -51,5 +51,16 @@
