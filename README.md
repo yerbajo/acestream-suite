@@ -1,5 +1,9 @@
 # acestream-suite
 
+**English** · [Español](README.es.md)
+
+<img src="assets/logo-3d.png" alt="acestream-suite" width="560">
+
 A self-hosted web front end for an **AceStream** engine. It keeps a catalogue of `acestream://`
 links — channels with their Content ID, an availability check against the engine, a captured frame
 of each one, categories, languages and countries — and adds four things around that catalogue:

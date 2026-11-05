@@ -1,5 +1,9 @@
 # acestream-suite
 
+[English](README.md) · **Español**
+
+<img src="assets/logo-3d.png" alt="acestream-suite" width="560">
+
 Un front end web autoalojado para un motor **AceStream**. Mantiene un catálogo de enlaces
 `acestream://` — canales con su Content ID, una comprobación de disponibilidad contra el motor, una
 captura de cada uno, categorías, idiomas y países — y añade cuatro cosas alrededor de ese catálogo:

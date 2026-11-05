@@ -114,6 +114,19 @@ prepare() {
     fi
 }
 
+# Un parche es un diff de texto: si un fichero binario difiere, `diff` lo dice en una línea y `patch`
+# lo ignora, así que el cambio se pierde en silencio (pasó con el favicon: la imagen seguía sirviendo
+# el icono de arriba). Falla en vez de escribir un parche incompleto; los binarios van por `COPY` en
+# el Dockerfile, desde `assets/`.
+check_binary() {
+    if grep -qE "(archivos binarios|Binary files).* differ|son distintos" "$1"; then
+        echo "$0: $1 compara un fichero binario: eso no se puede parchear." >&2
+        echo "$0: copia ese fichero a assets/ y añádelo al COPY del Dockerfile." >&2
+        rm -f "$1"
+        exit 1
+    fi
+}
+
 generate() {
     [ -d "$work/base" ] && [ -d "$work/epg" ] || {
         echo "$0: no trees in $work; run --prepare first" >&2
@@ -136,6 +149,7 @@ generate() {
         echo "$0: base and epg are identical, nothing written" >&2
         exit 1
     fi
+    check_binary "$out.tmp"
     mv "$out.tmp" "$out"
     echo "wrote $out" >&2
 }
@@ -158,6 +172,7 @@ generate_search() {
         echo "$0: epg and search are identical, nothing written" >&2
         exit 1
     fi
+    check_binary "$out.tmp"
     mv "$out.tmp" "$out"
     echo "wrote $out" >&2
 }

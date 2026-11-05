@@ -52,6 +52,11 @@ RUN set -eux; \
     patch -p1 < /tmp/acestream-suite-search.patch; \
     rm -f /tmp/upstream.tar.gz /tmp/acestream-suite-lan.patch /tmp/acestream-suite-guide.patch /tmp/acestream-suite-search.patch
 
+# Los ficheros que no son texto —el favicon y el logotipo— no viajan en un parche: `diff` solo sabe
+# decir «los archivos binarios son distintos», y `patch` no puede crearlos. Van por COPY, después de
+# los parches para que ganen a lo que traiga el código de arriba.
+COPY assets/favicon.ico assets/logo-3d-wordmark.png /app/app/web/static/
+
 # Editable on purpose. The app reads its templates, its static files AND `alembic.ini` +
 # `migrations/` relative to the `app` package's parent (`app/config.py:ROOT_DIR`, via
 # `resource_dir()`), so it must run from a source tree; a plain install would move the package into
