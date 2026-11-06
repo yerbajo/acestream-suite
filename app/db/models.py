@@ -8,6 +8,8 @@ from app.db.base import Base, UTCDateTime, utcnow
 
 
 class CheckStatus(StrEnum):
+    """How a check of a channel ended."""
+
     ALIVE = "alive"
     NO_PEERS = "no_peers"
     NOT_FOUND = "not_found"
@@ -15,7 +17,7 @@ class CheckStatus(StrEnum):
 
 
 class Resolution(StrEnum):
-    """Video resolution class of a channel, detected from its screenshots or set by hand."""
+    """Size class of a channel's picture, read from its screenshots or chosen by hand."""
 
     SD = "480p"
     HD = "720p"
@@ -24,13 +26,29 @@ class Resolution(StrEnum):
     OTHER = "other"
 
 
+def _enum_column(enum_class: type[StrEnum], *, width: int):
+    """A text column holding the enum's value, with the length the old schema gave it."""
+    return Enum(
+        enum_class,
+        native_enum=False,
+        create_constraint=False,
+        length=width,
+        values_callable=lambda members: [member.value for member in members],
+    )
+
+
+def _allowed_values(enum_class: type[StrEnum]) -> str:
+    """The enum's values as the SQL list a SQLite check constraint compares against."""
+    return ", ".join(f"'{member.value}'" for member in enum_class)
+
+
 class Category(Base):
     __tablename__ = "category"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), unique=True)
 
-    # "all": leave the FK alone on delete so the database RESTRICT rule applies.
+    # `all`: let the database decide on delete, so its RESTRICT rule is the one that speaks.
     channels: Mapped[list["Channel"]] = relationship(
         back_populates="category", passive_deletes="all"
     )
@@ -39,7 +57,6 @@ class Category(Base):
 class Channel(Base):
     __tablename__ = "channel"
     __table_args__ = (
-        # Content ID is stored normalized: 40 lowercase hex characters.
         CheckConstraint(
             "length(content_id) = 40 AND content_id NOT GLOB '*[^0-9a-f]*'",
             name="content_id_format",
@@ -50,36 +67,28 @@ class Channel(Base):
         Index("ix_channel_created_at", "created_at"),
         Index("ix_channel_resolution", "resolution"),
         CheckConstraint(
-            "resolution IN (" + ", ".join(f"'{r.value}'" for r in Resolution) + ")",
+            f"resolution IN ({_allowed_values(Resolution)})",
             name="resolution_valid",
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str] = mapped_column(String(200))
-    # The user gave no title: this one is provisional until the stream's name is known.
+    # Set while the title is ours and not the user's: a later check may replace it.
     title_pending: Mapped[bool] = mapped_column(default=False, server_default=false())
     content_id: Mapped[str] = mapped_column(String(40), unique=True)
-    # RESTRICT: a category in use cannot be deleted without reassigning its channels.
+    # RESTRICT: a category still in use cannot disappear from under its channels.
     category_id: Mapped[int | None] = mapped_column(
         ForeignKey("category.id", ondelete="RESTRICT"), index=True
     )
-    # SET NULL, never CASCADE: a feed that drops a guide channel must degrade this catalogue
-    # channel to "sin guía", not delete the channel itself. A channel outlives any guide.
+    # SET NULL and never CASCADE: when a guide feed stops offering a channel, the catalogue
+    # channel loses its guide and stays, because it is the catalogue that is the asset.
     guide_channel_id: Mapped[int | None] = mapped_column(
         ForeignKey("epg_channel.id", ondelete="SET NULL"), index=True
     )
     language: Mapped[str | None] = mapped_column(String(2))  # ISO 639-1, lowercase
     country: Mapped[str | None] = mapped_column(String(2))  # ISO 3166-1 alpha-2, uppercase
-    resolution: Mapped[Resolution | None] = mapped_column(
-        Enum(
-            Resolution,
-            native_enum=False,
-            create_constraint=False,
-            length=8,
-            values_callable=lambda e: [m.value for m in e],
-        )
-    )
+    resolution: Mapped[Resolution | None] = mapped_column(_enum_column(Resolution, width=8))
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)
 
@@ -97,7 +106,7 @@ class Check(Base):
     __tablename__ = "check_result"
     __table_args__ = (
         CheckConstraint(
-            "status IN (" + ", ".join(f"'{s.value}'" for s in CheckStatus) + ")",
+            f"status IN ({_allowed_values(CheckStatus)})",
             name="status_valid",
         ),
         Index("ix_check_result_channel_id_checked_at", "channel_id", "checked_at"),
@@ -106,21 +115,13 @@ class Check(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     channel_id: Mapped[int] = mapped_column(ForeignKey("channel.id", ondelete="CASCADE"))
     checked_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
-    status: Mapped[CheckStatus] = mapped_column(
-        Enum(
-            CheckStatus,
-            native_enum=False,
-            create_constraint=False,
-            length=16,
-            values_callable=lambda e: [m.value for m in e],
-        )
-    )
+    status: Mapped[CheckStatus] = mapped_column(_enum_column(CheckStatus, width=16))
     peers: Mapped[int | None]
     speed_down: Mapped[int | None]
-    # The engine resolves a Content ID to a different infohash, so it is kept separately.
+    # The engine turns a Content ID into a different infohash, so both are kept.
     infohash: Mapped[str | None] = mapped_column(String(40))
     screenshot_path: Mapped[str | None] = mapped_column(String(500))
-    # Frame size of the screenshot, when one was taken.
+    # Size of that screenshot, when the check took one.
     width: Mapped[int | None]
     height: Mapped[int | None]
     error_message: Mapped[str | None] = mapped_column(String(500))
@@ -136,32 +137,33 @@ class Setting(Base):
 
 
 class EpgChannel(Base):
-    """One channel as one guide names it. Never one row per catalogue channel.
+    """A channel as one guide names it.
 
-    Two providers use the same id for different channels, and the same channel differently, so a
-    guide channel is only ever identified by its source *and* the id the source gave it. Which
-    catalogue channel points at which of these — and the aliases that decision needs — is the
-    mapping layer's table, not this one.
+    Guides disagree: two of them use one id for different channels, and give one channel
+    two different ids. So a guide channel is identified by its source together with the id
+    that source used, and never by the name a person would recognise. Which catalogue
+    channel follows which guide channel, and the aliases that takes, lives in
+    `EpgAlias`, not here.
     """
 
     __tablename__ = "epg_channel"
     __table_args__ = (
-        # The name spells out both columns: the repo's naming convention would take only the first
-        # one, `uq_epg_channel_source`, which reads like `source` alone is unique.
+        # Both columns are named in full: the repo's convention would produce
+        # `uq_epg_channel_source`, which reads as if the source alone were unique.
         UniqueConstraint(
             "source", "source_channel_id", name="uq_epg_channel_source_source_channel_id"
         ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # The feed URL this channel was read from. A source is a cache that gets replaced, and this is
-    # what says which cache a row came from and which one dropped it.
+    # The feed this channel was read from. A source is a cache that gets replaced, and this
+    # is what tells which cache a row came from and which one stopped offering it.
     source: Mapped[str] = mapped_column(String(500))
     source_channel_id: Mapped[str] = mapped_column(String(200))
     name: Mapped[str] = mapped_column(String(200))
     icon: Mapped[str | None] = mapped_column(String(500))
-    # The last refresh that found this channel in its source. An older stamp is how a channel the
-    # source stopped offering is told apart from one whose source did not answer at all.
+    # The last refresh that still found this channel in its source. An older stamp is how
+    # "the source dropped it" is told apart from "the source did not answer".
     last_seen: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
     programmes: Mapped[list["Programme"]] = relationship(
@@ -170,19 +172,19 @@ class EpgChannel(Base):
 
 
 class Programme(Base):
-    """One listing of one guide channel, both bounds in UTC."""
+    """One entry of a guide channel's schedule, both bounds in UTC."""
 
     __tablename__ = "programme"
     __table_args__ = (
-        # A refresh is a re-read of mostly the same listings, so the second read of a programme is
-        # an update of this row and not a second copy of it. Spelled out for the same reason as the
-        # unique above: `uq_programme_epg_channel_id` alone would claim a channel has one programme.
+        # A refresh reads mostly the same listings again, so the same programme has to land
+        # on the same row. Spelled out in full for the same reason as the unique above:
+        # `uq_programme_epg_channel_id` would claim a channel has a single programme.
         UniqueConstraint("epg_channel_id", "start", name="uq_programme_epg_channel_id_start"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # No index of its own: the unique (epg_channel_id, start) above already answers everything that
-    # looks a programme up by its channel, foreign-key cascade included.
+    # No index of its own: the unique pair above already answers every lookup by channel,
+    # the foreign-key cascade included.
     epg_channel_id: Mapped[int] = mapped_column(ForeignKey("epg_channel.id", ondelete="CASCADE"))
     start: Mapped[datetime] = mapped_column(UTCDateTime)
     stop: Mapped[datetime] = mapped_column(UTCDateTime)
@@ -193,18 +195,19 @@ class Programme(Base):
 
 
 class EpgAlias(Base):
-    """A person's decision: this catalogue channel belongs to that guide channel.
+    """A person's decision that this catalogue channel belongs to that guide channel.
 
-    One row per channel: a second decision on the same channel replaces the first. The matcher
-    reads this table first and `--auto` never writes here, so a manual decision always wins. The
-    target is nullable because the guide channel it named can disappear; the row stays so the
-    channel remains human-owned instead of falling back to the matcher.
+    One row per catalogue channel, so a second decision replaces the first. The matcher
+    consults this table before anything else and `--auto` never writes to it, which is what
+    makes a manual decision final. `epg_channel_id` can be NULL because the guide channel
+    behind it may be gone; the row is kept so the channel stays human-owned instead of
+    quietly becoming the matcher's again.
     """
 
     __tablename__ = "epg_alias"
     __table_args__ = (
-        # One decision per catalogue channel, spelled out: `uq_epg_alias_channel_id` says which
-        # channel the decision is about, not that the row has one of anything else.
+        # Written out in full: the convention would call this `uq_epg_alias_channel_id`,
+        # which sounds like a statement about the channel rather than about the decision.
         UniqueConstraint("channel_id", name="uq_epg_alias_channel_id"),
     )
 
@@ -213,7 +216,7 @@ class EpgAlias(Base):
     epg_channel_id: Mapped[int | None] = mapped_column(
         ForeignKey("epg_channel.id", ondelete="SET NULL")
     )
-    # Who decided: the OS user of the CLI run, or `ACESTREAM_SUITE_EPG_ACTOR` when the host sets one.
+    # Who decided: the OS user of the CLI run, or `ACESTREAM_SUITE_EPG_ACTOR` if the host sets one.
     created_by: Mapped[str] = mapped_column(String(100), default="")
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)

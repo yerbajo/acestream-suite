@@ -1,3 +1,5 @@
+"""Reading a pasted list of links, and turning each new one into a channel."""
+
 import re
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -13,24 +15,25 @@ from app.services.naming import placeholder_title
 MAX_LINES = 2000
 _TITLE_LENGTH = 200  # the column length
 
-# A Content ID anywhere in the line, bare or as an acestream:// link, in any case.
+# A Content ID anywhere in the line: bare or as a link, any case. The lookarounds keep a
+# longer run of hex characters from being read as an id that happens to sit inside it.
 _LINK = re.compile(r"(?:acestream://)?(?<![0-9a-f])([0-9a-f]{40})(?![0-9a-f])", re.IGNORECASE)
-# What usually separates a title from its link: "Title - acestream://...", "hash | Title".
+# What usually sits between a title and its link: "Title - acestream://...", "hash | Title".
 _SEPARATORS = " \t-|,;:"
 
 
 @dataclass(frozen=True)
 class Entry:
-    line: int  # 1-based, as the user sees it
+    line: int  # 1-based, counted the way the user counts lines
     content_id: str
-    title: str | None  # None: take the stream's name
+    title: str | None  # None: the stream's own name is used instead
 
 
 class Reason(StrEnum):
-    NO_LINK = "no_link"  # the line has no Content ID
-    INVALID = "invalid"  # an exported channel with data that does not validate
-    REPEATED = "repeated"  # the same Content ID appeared on an earlier line
-    EXISTING = "existing"  # the Content ID is already in the catalog
+    NO_LINK = "no_link"  # the line holds no Content ID
+    INVALID = "invalid"  # an exported channel whose data does not validate
+    REPEATED = "repeated"  # that Content ID was already on an earlier line
+    EXISTING = "existing"  # that Content ID is already in the catalog
 
 
 @dataclass(frozen=True)
@@ -38,48 +41,50 @@ class Rejected:
     line: int
     text: str
     reason: Reason
-    first_line: int | None = None  # for REPEATED
-    existing: Channel | None = None  # for EXISTING
-    detail: str | None = None  # for INVALID: what was wrong
+    first_line: int | None = None  # REPEATED: where the id appeared before
+    existing: Channel | None = None  # EXISTING: the channel already there
+    detail: str | None = None  # INVALID: what was wrong with it
 
 
 @dataclass
 class ImportResult:
-    unit: str = "line"  # what `Rejected.line` counts: "line" of text or exported "channel"
+    unit: str = "line"  # what `Rejected.line` counts: a line of text or an exported channel
     created: list[Channel] = field(default_factory=list)
     duplicates: list[Rejected] = field(default_factory=list)
     invalid: list[Rejected] = field(default_factory=list)
 
 
 def parse_links(text: str) -> tuple[list[Entry], list[Rejected]]:
-    """Reads one link per line; `#EXTINF` lines of an M3U list name the link below them.
+    """Reads one link per line, skipping comments and blank lines.
 
-    Other `#` lines and blank lines are ignored. Text around the link becomes the title;
-    without any, the title is None and the stream's name is used later.
+    An `#EXTINF` line names the link below it, the way an M3U list does. When no such
+    line gave a name, the text around the link on its own line is used as the title; when
+    there is none either, the entry has no title and the stream's name is used later.
     """
     entries: list[Entry] = []
-    invalid: list[Rejected] = []
-    pending_title: str | None = None
+    rejected: list[Rejected] = []
+    extinf_title: str | None = None
     for number, raw in enumerate(text.splitlines(), start=1):
         line = raw.strip()
         if not line:
             continue
         if line.upper().startswith("#EXTINF"):
-            pending_title = _extinf_title(line)
+            extinf_title = _extinf_title(line)
             continue
         if line.startswith("#"):
             continue
         match = _LINK.search(line)
         if match is None:
-            invalid.append(Rejected(number, line, Reason.NO_LINK))
-            pending_title = None
+            rejected.append(Rejected(number, line, Reason.NO_LINK))
+            extinf_title = None
             continue
-        content_id = match.group(1).lower()
         around = (line[: match.start()] + " " + line[match.end() :]).strip(_SEPARATORS)
-        title = pending_title or around or None
-        entries.append(Entry(number, content_id, title[:_TITLE_LENGTH] if title else None))
-        pending_title = None
-    return entries, invalid
+        title = extinf_title or around or None
+        entries.append(
+            Entry(number, match.group(1).lower(), title[:_TITLE_LENGTH] if title else None)
+        )
+        extinf_title = None
+    return entries, rejected
 
 
 def import_links(
@@ -90,14 +95,16 @@ def import_links(
     language: str | None = None,
     country: str | None = None,
 ) -> ImportResult:
-    """Creates a channel per new link, without verifying them (callers queue the checks).
+    """Creates a channel for every link that is new, without checking any (callers queue that).
 
-    Links already in the catalog, or repeated in the text, are reported as duplicates.
+    A link already in the catalog, or one that appeared earlier in the same text, comes
+    back as a duplicate instead of a second channel.
     """
-    lines = text.splitlines()
-    if len(lines) > MAX_LINES:
-        raise ValidationError(f"too many lines: {len(lines)} (at most {MAX_LINES})")
-    # Checked once up front, so a bad value fails the whole import before creating anything.
+    line_count = len(text.splitlines())
+    if line_count > MAX_LINES:
+        raise ValidationError(f"too many lines: {line_count} (at most {MAX_LINES})")
+    # The shared values are read once, before anything is written, so a bad one fails the
+    # whole import instead of failing channels one at a time.
     language = normalize_language(language)
     country = normalize_country(country)
     channels.check_category(session, category_id)
@@ -135,12 +142,15 @@ def import_links(
 
 
 def _extinf_title(line: str) -> str | None:
-    # "#EXTINF:-1 tvg-name="a,b" group-title="Sports",Title": the title follows the
-    # first comma outside quotes.
-    quoted = False
-    for index, char in enumerate(line):
-        if char == '"':
-            quoted = not quoted
-        elif char == "," and not quoted:
-            return line[index + 1 :].strip() or None
+    """The name an `#EXTINF` line carries: what follows its last attribute, after a comma.
+
+    The attributes can hold commas of their own inside quotes, so the scan has to know
+    when it is inside one.
+    """
+    in_quotes = False
+    for position, character in enumerate(line):
+        if character == '"':
+            in_quotes = not in_quotes
+        elif character == "," and not in_quotes:
+            return line[position + 1 :].strip() or None
     return None

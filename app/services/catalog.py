@@ -1,3 +1,5 @@
+"""The write side of the catalog: adding and editing channels, and checking them."""
+
 import logging
 from enum import StrEnum
 from pathlib import Path
@@ -21,20 +23,20 @@ from app.services.verification import VerificationSettings, verify
 log = logging.getLogger(__name__)
 
 
+class Screenshots(StrEnum):
+    """Whether a check of a live channel also captures a frame of it."""
+
+    NEVER = "never"  # availability and peers, nothing else
+    IF_MISSING = "if_missing"  # the channel has no picture yet
+    ALWAYS = "always"  # a different stream, or pictures being rebuilt
+
+
 def parse_link(link: str) -> str:
-    """Content ID from user input, as a `ValidationError` like every other bad input."""
+    """The Content ID inside what the user pasted, refused as a `ValidationError` when unusable."""
     try:
         return parse_content_id(link)
     except InvalidContentIdError as exc:
         raise ValidationError(str(exc)) from exc
-
-
-class Screenshots(StrEnum):
-    """When a check of a live channel takes a screenshot."""
-
-    NEVER = "never"  # a plain check: availability and peers only
-    IF_MISSING = "if_missing"  # a new channel that has none yet
-    ALWAYS = "always"  # regenerating, or a new link that is another stream
 
 
 def check_channel(
@@ -47,57 +49,75 @@ def check_channel(
     screenshots: Screenshots = Screenshots.NEVER,
     data_dir: Path = DATA_DIR,
 ) -> Check:
-    """Verifies a channel and stores the result.
+    """Checks one channel and files the outcome in its history.
 
-    By default only availability and peers are checked; `screenshots` decides whether a
-    live channel also gets a screenshot, which adds seconds per channel.
-    Engine and screenshot problems end up in the stored check, except an engine that
-    cannot be reached: then `EngineUnavailableError` propagates and nothing is stored.
-    Blocks while the engine is polled, so call it from a worker thread.
+    Availability and peers are always checked; `screenshots` decides whether a channel
+    that turns out to be alive also gets a picture, which costs seconds per channel.
+    Engine and ffmpeg trouble becomes the stored check, with one exception: an engine
+    that cannot be reached says nothing about the channel, so it raises
+    `EngineUnavailableError` and writes nothing at all.
+
+    Polls the engine while it waits, so run it in a worker thread.
     """
     channel = channels.get_channel(session, channel_id)
     content_id = channel.content_id
     if channel.title_pending:
         _name_from_stream(session, client, channel)
-    capture = capture or CaptureSettings()
-    wants_screenshot = screenshots is Screenshots.ALWAYS or (
-        screenshots is Screenshots.IF_MISSING and not has_screenshot(session, channel_id)
-    )
-    screenshot: str | None = None
 
-    def take_screenshot(stream: StreamSession) -> None:
-        nonlocal screenshot
-        try:
-            screenshot = capture_screenshot(
-                stream.playback_url,
-                content_id,
-                data_dir=data_dir,
-                ffmpeg_path=capture.ffmpeg_path,
-                timeout=capture.timeout,
-            )
-        except ScreenshotError as exc:
-            # A missing screenshot must not turn a live channel into a failed check.
-            log.warning("no screenshot for %s: %s", content_id, exc)
+    wanted = _wants_picture(session, channel_id, screenshots)
+    picture: str | None = None
 
-    result = verify(
-        client, content_id, settings, on_alive=take_screenshot if wants_screenshot else None
-    )
-    frame = frame_size(data_dir / screenshot) if screenshot else None
-    check = record_verification(
-        session, channel_id, result, screenshot_path=screenshot, frame=frame
-    )
+    def grab(stream: StreamSession) -> None:
+        nonlocal picture
+        picture = _capture(stream, content_id, capture or CaptureSettings(), data_dir)
+
+    result = verify(client, content_id, settings, on_alive=grab if wanted else None)
+
+    frame = frame_size(data_dir / picture) if picture else None
+    check = record_verification(session, channel_id, result, screenshot_path=picture, frame=frame)
     if frame is not None:
-        # The stream is the authority: a detected resolution replaces one set by hand.
+        # What the stream shows is evidence; it overrides a resolution chosen by hand.
         channels.update_channel(session, channel_id, resolution=classify(*frame).value)
     return check
 
 
+def _wants_picture(session: Session, channel_id: int, mode: Screenshots) -> bool:
+    if mode is Screenshots.ALWAYS:
+        return True
+    if mode is Screenshots.IF_MISSING:
+        return not has_screenshot(session, channel_id)
+    return False
+
+
+def _capture(
+    stream: StreamSession, content_id: str, capture: CaptureSettings, data_dir: Path
+) -> str | None:
+    """The relative path of the new screenshot, or None when no frame could be taken.
+
+    A channel that is alive without a picture is still alive, so ffmpeg failing is
+    logged and not turned into a failed check.
+    """
+    try:
+        return capture_screenshot(
+            stream.playback_url,
+            content_id,
+            data_dir=data_dir,
+            ffmpeg_path=capture.ffmpeg_path,
+            timeout=capture.timeout,
+        )
+    except ScreenshotError as exc:
+        log.warning("no screenshot for %s: %s", content_id, exc)
+        return None
+
+
 def _name_from_stream(session: Session, client: EngineClient, channel: Channel) -> None:
-    """Replaces a provisional title with the content's published name, if the engine has it."""
+    """Gives a provisional title the stream's own name, when the engine can supply one.
+
+    Any engine failure leaves the provisional title alone; the next check tries again.
+    """
     try:
         name = clean_stream_name(client.media_name(channel.content_id))
     except EngineError as exc:
-        # The title stays provisional and the next check tries again.
         log.warning("no stream name for %s: %s", channel.content_id, exc)
         return
     if name is not None:
@@ -105,6 +125,7 @@ def _name_from_stream(session: Session, client: EngineClient, channel: Channel) 
 
 
 def has_screenshot(session: Session, channel_id: int) -> bool:
+    """Whether any check of this channel has stored a screenshot."""
     return (
         session.scalar(
             select(Check.id)
@@ -130,28 +151,40 @@ def add_channel(
     verify: bool = True,
     data_dir: Path = DATA_DIR,
 ) -> Channel:
-    """Registers a channel from a Content ID or `acestream://` link and verifies it.
+    """Registers a channel from a Content ID or link and checks it.
 
-    The channel is saved before verifying, so an engine that is down leaves it stored
-    and unchecked instead of losing what the user typed; `verify=False` skips the
-    check outright (the caller already knows the engine is off). Without a title it
-    gets the stream's name, or a provisional one until a check finds that name.
+    The row is committed before the engine is asked, so a link typed while the engine is
+    off is stored rather than lost; `verify=False` skips the check for a caller that
+    already knows there is nothing to ask. A channel without a title takes the stream's
+    name, or a provisional one until a later check finds that name.
     """
     content_id = parse_link(link)
     _ensure_free(session, content_id)
-    pending = not title.strip()
+    unnamed = not title.strip()
     channel = channels.create_channel(
         session,
-        title=placeholder_title(content_id) if pending else title,
-        title_pending=pending,
+        title=placeholder_title(content_id) if unnamed else title,
+        title_pending=unnamed,
         content_id=content_id,
         category_id=category_id,
         language=language,
         country=country,
         resolution=resolution,
     )
-    if not verify:
-        return channel
+    if verify:
+        _first_check(session, client, channel, settings, capture, data_dir)
+    return channel
+
+
+def _first_check(
+    session: Session,
+    client: EngineClient,
+    channel: Channel,
+    settings: VerificationSettings | None,
+    capture: CaptureSettings | None,
+    data_dir: Path,
+) -> None:
+    """Checks a channel just added, leaving it stored and unchecked when the engine is off."""
     try:
         check_channel(
             session,
@@ -163,9 +196,7 @@ def add_channel(
             data_dir=data_dir,
         )
     except EngineUnavailableError as exc:
-        # Kept unchecked: the engine being off says nothing about the channel.
-        log.warning("engine unavailable, %s saved unchecked: %s", content_id, exc)
-    return channel
+        log.warning("engine unavailable, %s saved unchecked: %s", channel.content_id, exc)
 
 
 def edit_channel(
@@ -180,40 +211,56 @@ def edit_channel(
     data_dir: Path = DATA_DIR,
     **changes,
 ) -> Channel:
-    """Updates a channel; a new Content ID is verified again (unless `verify=False`),
-    other edits are not.
+    """Applies edits to a channel, checking it again only when its Content ID changed.
 
-    `changes` accepts `title`, `category_id`, `language`, `country` and `resolution`.
+    `changes` takes `title`, `category_id`, `language`, `country` and `resolution`; a new
+    Content ID travels through `link` so it goes through the same parsing as any other.
     """
     if "content_id" in changes:
         raise ValidationError("change the Content ID through `link` so it is validated")
     channel = channels.get_channel(session, channel_id)
-    new_content_id = parse_link(link) if link is not None else None
-    hash_changed = new_content_id is not None and new_content_id != channel.content_id
-    if hash_changed:
-        _ensure_free(session, new_content_id, ignore=channel_id)
-        changes["content_id"] = new_content_id
+
+    replacement = parse_link(link) if link is not None else None
+    other_stream = replacement is not None and replacement != channel.content_id
+    if other_stream:
+        _ensure_free(session, replacement, ignore=channel_id)
+        changes["content_id"] = replacement
 
     channels.update_channel(session, channel_id, **changes)
-    if hash_changed and verify:
-        # History is kept: it is how the user sees that the old link died. The new
-        # link is another stream, so the old screenshots no longer show it.
-        try:
-            check_channel(
-                session,
-                client,
-                channel_id,
-                settings=settings,
-                capture=capture,
-                screenshots=Screenshots.ALWAYS,
-                data_dir=data_dir,
-            )
-        except EngineUnavailableError as exc:
-            log.warning("engine unavailable, %s left unchecked: %s", new_content_id, exc)
+    if other_stream and verify:
+        _recheck_new_stream(session, client, channel, settings, capture, data_dir)
     return channel
 
 
+def _recheck_new_stream(
+    session: Session,
+    client: EngineClient,
+    channel: Channel,
+    settings: VerificationSettings | None,
+    capture: CaptureSettings | None,
+    data_dir: Path,
+) -> None:
+    """Checks a channel whose Content ID was replaced, keeping the history of the old one.
+
+    That history is how the user sees the previous link stopped working, so it stays; the
+    pictures go, because they show a stream that is no longer this channel's.
+    """
+    try:
+        check_channel(
+            session,
+            client,
+            channel.id,
+            settings=settings,
+            capture=capture,
+            screenshots=Screenshots.ALWAYS,
+            data_dir=data_dir,
+        )
+    except EngineUnavailableError as exc:
+        log.warning("engine unavailable, %s left unchecked: %s", channel.content_id, exc)
+
+
 def _ensure_free(session: Session, content_id: str, *, ignore: int | None = None) -> None:
+    """Refuses a Content ID that another channel already uses."""
     existing = channels.find_channel_by_content_id(session, content_id)
     if existing is not None and existing.id != ignore:
         raise DuplicateError(f"this Content ID is already registered as '{existing.title}'")

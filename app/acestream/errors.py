@@ -1,21 +1,28 @@
+"""What can go wrong while talking to the Acestream engine.
+
+They all derive from `EngineError`, so a caller that only needs to know whether the
+engine answered can catch that one class and let the rest through.
+"""
+
+
 class EngineError(Exception):
-    """Base class for every failure talking to the Acestream engine."""
+    """Anything that stopped a request to the engine from being useful."""
 
 
 class EngineUnavailableError(EngineError):
-    """The engine cannot be reached (not running, wrong URL, connection refused)."""
+    """Nothing is listening at the configured address, or the connection broke."""
 
 
 class EngineTimeoutError(EngineError):
-    """The engine did not answer within the configured timeout."""
+    """The engine took longer than the configured timeout to answer."""
 
 
 class EngineProtocolError(EngineError):
-    """The engine answered, but not in the shape documented in docs/engine-api.md."""
+    """The engine replied, but not with the API described in docs/engine-api.md."""
 
 
 class ContentNotFoundError(EngineError):
-    """The engine could not load the content (unknown or malformed Content ID)."""
+    """The engine could not resolve the Content ID it was given into playable content."""
 
     def __init__(self, content_id: str):
         super().__init__(f"engine could not load content: {content_id}")

@@ -4,7 +4,8 @@ from sqlalchemy import DateTime, MetaData
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.types import TypeDecorator
 
-# Stable constraint names keep Alembic migrations deterministic on SQLite.
+# Alembic writes these names into its scripts. Deriving them from the columns instead of
+# letting the database invent them keeps a regenerated migration identical to the applied one.
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
@@ -19,7 +20,12 @@ class Base(DeclarativeBase):
 
 
 class UTCDateTime(TypeDecorator):
-    """Stores UTC; SQLite drops tzinfo, so it is restored on read."""
+    """A timestamp that only ever holds UTC.
+
+    SQLite has no time zone type and hands the value back naive, so the zone is dropped
+    on the way in and UTC is put back on the way out. Anything already naive is refused:
+    a timestamp without a zone cannot be compared with the ones this column returns.
+    """
 
     impl = DateTime
     cache_ok = True
@@ -36,4 +42,5 @@ class UTCDateTime(TypeDecorator):
 
 
 def utcnow() -> datetime:
+    """The current moment, in the only zone this application stores."""
     return datetime.now(UTC)

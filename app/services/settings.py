@@ -1,3 +1,5 @@
+"""The settings the user can change, and how they are read from and written to the database."""
+
 from collections.abc import Callable
 from dataclasses import dataclass, fields, replace
 
@@ -20,15 +22,16 @@ from app.services.verification import VerificationSettings
 
 @dataclass(frozen=True)
 class AppSettings:
-    """User settings. Defaults come from the environment (`ACESTREAM_SUITE_*`); saved values win.
+    """Everything the user can adjust.
 
-    A path set to `None` means "detect it": usual install folders, then PATH.
+    The defaults are the environment's (`ACESTREAM_SUITE_*`); a saved value replaces one.
+    A path of None means "find it yourself": the usual install folders, then PATH.
     """
 
     engine_url: str = ENGINE_URL
     engine_timeout: float = ENGINE_TIMEOUT
-    # Empty: the searcher lives at the engine's address, so pointing the engine elsewhere carries the
-    # search with it. A different searcher is a saved value of its own.
+    # Empty means the searcher answers on the engine's address, so moving the engine takes
+    # the search along. Pointing it somewhere else is a saved value in its own right.
     search_url: str = SEARCH_URL
     min_peers: int = VerificationSettings.min_peers
     check_timeout: float = VerificationSettings.timeout
@@ -36,11 +39,11 @@ class AppSettings:
     check_concurrency: int = CHECK_CONCURRENCY
     vlc_path: str | None = VLC_PATH
     ffmpeg_path: str | None = FFMPEG_PATH
-    acestream_path: str | None = None  # the installed engine, for reference
+    acestream_path: str | None = None  # the installed engine, kept for reference
 
     @property
     def resolved_search_url(self) -> str:
-        """Where to search: its own URL, or the engine's address when it has none."""
+        """Where searches go: the searcher's own URL, or the engine's when it has none."""
         return self.search_url or self.engine_url
 
     def verification(self) -> VerificationSettings:
@@ -50,7 +53,9 @@ class AppSettings:
         return CaptureSettings(ffmpeg_path=self.ffmpeg_path, timeout=self.screenshot_timeout)
 
 
-_PARSERS: dict[str, Callable[[str], object]] = {
+# How each stored value is read back. The assert below keeps this table and the dataclass
+# from drifting apart: a new field has to be given a way to be stored.
+_READERS: dict[str, Callable[[str], object]] = {
     "engine_url": str,
     "engine_timeout": float,
     "search_url": str,
@@ -62,28 +67,37 @@ _PARSERS: dict[str, Callable[[str], object]] = {
     "ffmpeg_path": str,
     "acestream_path": str,
 }
-assert _PARSERS.keys() == {f.name for f in fields(AppSettings)}
+assert _READERS.keys() == {f.name for f in fields(AppSettings)}
 
 
 def load_settings(session: Session) -> AppSettings:
-    """Saved settings over the defaults; a stored value that no longer parses is skipped."""
-    stored = {s.key: s.value for s in session.scalars(select(Setting))}
-    values = {}
-    for name, parse in _PARSERS.items():
-        if name in stored:
-            try:
-                values[name] = parse(stored[name])
-            except ValueError:
-                continue
-    return replace(AppSettings(), **values)
+    """The saved settings over the defaults.
+
+    A stored value that no longer parses is skipped, so one bad row written by an older
+    version costs that setting and not every page that reads it.
+    """
+    stored = {row.key: row.value for row in session.scalars(select(Setting))}
+    return replace(AppSettings(), **_readable(stored))
+
+
+def _readable(stored: dict[str, str]) -> dict[str, object]:
+    values: dict[str, object] = {}
+    for name, read in _READERS.items():
+        if name not in stored:
+            continue
+        try:
+            values[name] = read(stored[name])
+        except ValueError:
+            continue
+    return values
 
 
 def save_settings(session: Session, settings: AppSettings) -> None:
-    """Stores every setting; a `None` path is removed so it is detected again.
+    """Stores every setting; a path left as None is removed so it gets detected again.
 
-    Values must already be validated: this layer only persists them.
+    Values are validated before they get here: this function only persists them.
     """
-    for name in _PARSERS:
+    for name in _READERS:
         value = getattr(settings, name)
         if value is None:
             session.execute(delete(Setting).where(Setting.key == name))

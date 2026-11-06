@@ -1,7 +1,7 @@
-"""acestream-suite's own export file: every channel with the data stored for it, as JSON.
+"""The suite's own export format: every channel with the data stored for it, as JSON.
 
-Check history and screenshots belong to the machine that made them and are not exported;
-the importing machine verifies the channels itself.
+What is left out is deliberate. Check history and screenshots describe the machine that
+made them, so they do not travel; the receiving machine checks the channels itself.
 """
 
 import json
@@ -24,19 +24,20 @@ from app.services.resolution import normalize_resolution
 FORMAT = "acestream-suite"
 VERSION = 1
 _TITLE_LENGTH = 200  # the column length
+_SHOWN = 120  # how much of a rejected entry is quoted back to the user
 
 
 def export_channels(rows: Iterable[Channel], *, exported_at: datetime | None = None) -> dict:
-    """The export document for the given channels, ready for `json.dumps`."""
+    """The export document for these channels, ready to be handed to `json.dumps`."""
     return {
         "format": FORMAT,
         "version": VERSION,
         "exported_at": (exported_at or utcnow()).isoformat(),
-        "channels": [_export_channel(channel) for channel in rows],
+        "channels": [_entry_for(channel) for channel in rows],
     }
 
 
-def _export_channel(channel: Channel) -> dict[str, Any]:
+def _entry_for(channel: Channel) -> dict[str, Any]:
     return {
         "title": channel.title,
         "title_pending": channel.title_pending,
@@ -51,12 +52,12 @@ def _export_channel(channel: Channel) -> dict[str, Any]:
 
 
 def is_export(text: str) -> bool:
-    """Whether `text` looks like an acestream-suite export (a JSON object), not a list of links."""
+    """Whether the text opens as a JSON object: an export does, a list of links does not."""
     return text.lstrip().startswith("{")
 
 
 def parse_export(text: str) -> list[Any]:
-    """The `channels` of an export; raises `ValidationError` for anything else."""
+    """The `channels` of an export, or a `ValidationError` explaining why this is not one."""
     try:
         document = json.loads(text)
     except ValueError as exc:
@@ -82,11 +83,11 @@ def import_export(
     language: str | None = None,
     country: str | None = None,
 ) -> ImportResult:
-    """Creates the channels of an export that are not in the catalog yet.
+    """Creates the channels of an export that this catalog does not have yet.
 
-    Each channel keeps its exported data; the given category, language and country only
-    fill in what a channel lacks. A channel with invalid data is reported and skipped,
-    without stopping the rest. Callers queue the checks.
+    A channel keeps what the file says about it, and the category, language and country
+    given here only fill in what it lacks. One unusable channel is reported and skipped
+    without stopping the rest; the checks are left for the caller to queue.
     """
     entries = parse_export(text)
     language = normalize_language(language)
@@ -98,14 +99,13 @@ def import_export(
     for position, entry in enumerate(entries, start=1):
         if not isinstance(entry, dict):
             result.invalid.append(
-                Rejected(position, str(entry)[:120], Reason.INVALID, detail="not a channel")
+                Rejected(position, str(entry)[:_SHOWN], Reason.INVALID, detail="not a channel")
             )
             continue
         raw_link = str(entry.get("content_id") or entry.get("link") or "")
-        try:
-            content_id = parse_content_id(raw_link)
-        except InvalidContentIdError:
-            result.invalid.append(Rejected(position, raw_link[:120], Reason.NO_LINK))
+        content_id = _parsed_link(raw_link)
+        if content_id is None:
+            result.invalid.append(Rejected(position, raw_link[:_SHOWN], Reason.NO_LINK))
             continue
         if content_id in seen:
             result.duplicates.append(
@@ -120,12 +120,20 @@ def import_export(
             )
             continue
         try:
-            channel = _create(session, entry, content_id, category_id, language, country)
+            created = _create(session, entry, content_id, category_id, language, country)
         except ServiceError as exc:
             result.invalid.append(Rejected(position, content_id, Reason.INVALID, detail=str(exc)))
             continue
-        result.created.append(channel)
+        result.created.append(created)
     return result
+
+
+def _parsed_link(raw: str) -> str | None:
+    """The Content ID held by an entry's `content_id` or `link`, when either is valid."""
+    try:
+        return parse_content_id(raw)
+    except InvalidContentIdError:
+        return None
 
 
 def _create(
@@ -136,35 +144,40 @@ def _create(
     default_language: str | None,
     default_country: str | None,
 ) -> Channel:
-    # Every field is checked before anything is written, so a bad channel leaves no trace.
+    # Every field is read and accepted before anything is written, so a channel rejected
+    # half way leaves no trace: not a row and not the category it asked for.
     language = normalize_language(_text(entry, "language")) or default_language
     country = normalize_country(_text(entry, "country")) or default_country
     resolution = normalize_resolution(_text(entry, "resolution"))
-    created_at = _datetime(entry.get("created_at"))
     title = (_text(entry, "title") or "").strip()[:_TITLE_LENGTH]
-    pending = bool(entry.get("title_pending")) or not title
-    category_name = (_text(entry, "category") or "").strip()
-
-    category_id = (
-        categories.find_or_create(session, category_name).id
-        if category_name
-        else default_category_id
-    )
     channel = channels.create_channel(
         session,
         title=title or placeholder_title(content_id),
-        title_pending=pending,
+        title_pending=bool(entry.get("title_pending")) or not title,
         content_id=content_id,
-        category_id=category_id,
+        category_id=_category_for(session, entry, default_category_id),
         language=language,
         country=country,
         resolution=resolution.value if resolution else None,
     )
-    if created_at is not None:
-        # The original date of addition travels with the channel.
-        channel.created_at = created_at
-        session.commit()
+    _restore_added_at(session, channel, entry.get("created_at"))
     return channel
+
+
+def _category_for(session: Session, entry: dict, fallback: int | None) -> int | None:
+    """The category the entry names, matched by name; the fallback when it names none."""
+    name = (_text(entry, "category") or "").strip()
+    if not name:
+        return fallback
+    return categories.find_or_create(session, name).id
+
+
+def _restore_added_at(session: Session, channel: Channel, value: Any) -> None:
+    """Keeps the moment the channel was added on the machine that exported it."""
+    moment = _datetime(value)
+    if moment is not None:
+        channel.created_at = moment
+        session.commit()
 
 
 def _text(entry: dict, key: str) -> str | None:
@@ -177,7 +190,10 @@ def _text(entry: dict, key: str) -> str | None:
 
 
 def _datetime(value: Any) -> datetime | None:
-    """An ISO date from the export, as UTC; anything unreadable is ignored."""
+    """An ISO date from the export as UTC; a value that cannot be read is simply ignored.
+
+    A date without a zone is taken to be UTC, since that is the only zone the app stores.
+    """
     if not isinstance(value, str):
         return None
     try:

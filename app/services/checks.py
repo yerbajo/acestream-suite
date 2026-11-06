@@ -1,3 +1,5 @@
+"""The check history: writing one result and reading a channel's back."""
+
 from datetime import datetime
 
 from sqlalchemy import func, select
@@ -7,7 +9,11 @@ from app.db.models import Check, CheckStatus
 from app.services.channels import get_channel
 from app.services.verification import VerificationResult
 
-_MAX_MESSAGE = 500
+# `error_message` is a String(500), and engine messages are longer than that.
+_MESSAGE_LIMIT = 500
+# Newest first. Two checks recorded in the same instant are ordered by insertion, which is
+# the order they were really made in.
+_NEWEST_FIRST = (Check.checked_at.desc(), Check.id.desc())
 
 
 def add_check(
@@ -24,7 +30,8 @@ def add_check(
     height: int | None = None,
     checked_at: datetime | None = None,
 ) -> Check:
-    """`screenshot_path` is relative to the data directory; width and height are its size."""
+    """Files one check. `screenshot_path` is relative to the data directory, and width and
+    height are the size of that screenshot."""
     get_channel(session, channel_id)
     check = Check(
         channel_id=channel_id,
@@ -53,8 +60,7 @@ def record_verification(
     frame: tuple[int, int] | None = None,
     checked_at: datetime | None = None,
 ) -> Check:
-    """Stores a verification outcome as the newest entry of the channel's history."""
-    message = result.error_message
+    """Appends a verification outcome to the channel's history."""
     return add_check(
         session,
         channel_id,
@@ -63,52 +69,49 @@ def record_verification(
         speed_down=result.speed_down,
         infohash=result.infohash,
         screenshot_path=screenshot_path,
-        # Matches the column length so a long engine message cannot break the insert.
-        error_message=message[:_MAX_MESSAGE] if message else None,
+        error_message=_fitted(result.error_message),
         width=frame[0] if frame else None,
         height=frame[1] if frame else None,
         checked_at=checked_at,
     )
 
 
+def _fitted(message: str | None) -> str | None:
+    """An engine message cut to the column's length, so storing it cannot fail."""
+    return message[:_MESSAGE_LIMIT] if message else None
+
+
 def list_checks(session: Session, channel_id: int) -> list[Check]:
-    """History of a channel, newest first."""
+    """Everything known about the channel, newest first."""
     get_channel(session, channel_id)
-    return list(
-        session.scalars(
-            select(Check)
-            .where(Check.channel_id == channel_id)
-            .order_by(Check.checked_at.desc(), Check.id.desc())
-        )
-    )
+    return list(session.scalars(_history(channel_id)))
 
 
 def get_latest_check(session: Session, channel_id: int) -> Check | None:
+    """The channel's current state, or None when it was never checked."""
     get_channel(session, channel_id)
-    return session.scalars(
-        select(Check)
-        .where(Check.channel_id == channel_id)
-        .order_by(Check.checked_at.desc(), Check.id.desc())
-        .limit(1)
-    ).first()
+    return session.scalars(_history(channel_id).limit(1)).first()
+
+
+def _history(channel_id: int):
+    return select(Check).where(Check.channel_id == channel_id).order_by(*_NEWEST_FIRST)
+
+
+def _ranked(*columns):
+    """The given columns plus each row's position in its channel's history, newest first."""
+    return select(
+        *columns,
+        func.row_number().over(partition_by=Check.channel_id, order_by=_NEWEST_FIRST).label("rank"),
+    )
 
 
 def latest_screenshots(session: Session) -> dict[int, str]:
-    """Newest screenshot path of every channel that has one, keyed by channel id.
+    """The most recent screenshot of every channel that has one, keyed by channel id.
 
-    Not necessarily from the latest check: most checks take no screenshot.
+    It is not necessarily the screenshot of the latest check: most checks take none.
     """
     ranked = (
-        select(
-            Check.channel_id.label("channel_id"),
-            Check.screenshot_path.label("path"),
-            func.row_number()
-            .over(
-                partition_by=Check.channel_id,
-                order_by=(Check.checked_at.desc(), Check.id.desc()),
-            )
-            .label("rank"),
-        )
+        _ranked(Check.channel_id.label("channel_id"), Check.screenshot_path.label("path"))
         .where(Check.screenshot_path.is_not(None))
         .subquery()
     )
@@ -117,15 +120,7 @@ def latest_screenshots(session: Session) -> dict[int, str]:
 
 
 def latest_checks(session: Session) -> dict[int, Check]:
-    """Most recent check of every channel that has at least one, keyed by channel id."""
-    ranked = select(
-        Check.id.label("id"),
-        func.row_number()
-        .over(
-            partition_by=Check.channel_id,
-            order_by=(Check.checked_at.desc(), Check.id.desc()),
-        )
-        .label("rank"),
-    ).subquery()
-    stmt = select(Check).join(ranked, Check.id == ranked.c.id).where(ranked.c.rank == 1)
-    return {check.channel_id: check for check in session.scalars(stmt)}
+    """The newest check of each channel that has one, keyed by channel id."""
+    ranked = _ranked(Check.id.label("id")).subquery()
+    newest = select(Check).join(ranked, Check.id == ranked.c.id).where(ranked.c.rank == 1)
+    return {check.channel_id: check for check in session.scalars(newest)}
