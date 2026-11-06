@@ -25,6 +25,14 @@ Content ID、针对引擎的可用性检查、每个频道抓取的一帧画面�
 > **没有身份验证。** 本应用面向私有网络。任何能访问该端口的人都可以浏览目录并启动流。不要把它
 > 发布到互联网上。
 
+## 截图
+
+<p align="center"><img src="assets/screenshots/zh.webp" alt="频道列表（中文界面）" width="900"></p>
+
+界面提供八种语言。页面顶部的切换器切换的是 README；应用本身的语言在**设置**中选择，或通过
+`ACESTREAM_SUITE_LANGUAGE` 指定（`es`、`en`、`fr`、`it`、`de`、`ru`、`zh`、`ja`）。每种语言一张截图，
+放在 `assets/screenshots/`。
+
 ## 快速开始（Docker）
 
 要求：装有 Compose v2 的 Docker，以及一个容器可通过 HTTP 访问的 AceStream 引擎（本套件不负责启动

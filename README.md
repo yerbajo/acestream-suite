@@ -27,6 +27,15 @@ third-party software and keeps its own name.
 > **No authentication.** The app is meant for a private network. Anyone who can reach the port can
 > browse the catalogue and start streams. Do not publish it to the internet.
 
+## Screenshots
+
+<p align="center"><img src="assets/screenshots/en.webp" alt="The channel list, in English" width="900"></p>
+
+The interface is written in eight languages. The switcher at the top of this page changes the
+README; the language of the application itself is chosen in **Settings** or with
+`ACESTREAM_SUITE_LANGUAGE` (`es`, `en`, `fr`, `it`, `de`, `ru`, `zh`, `ja`). One screenshot per
+language is in `assets/screenshots/`.
+
 ## Quickstart (Docker)
 
 Requirements: Docker with Compose v2, and an AceStream engine reachable over HTTP from the

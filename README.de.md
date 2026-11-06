@@ -30,6 +30,15 @@ ist Software eines Dritten und behält ihren eigenen Namen.
 > **Keine Authentifizierung.** Die App ist für ein privates Netz gedacht. Wer den Port erreichen
 > kann, kann den Katalog durchsuchen und Streams starten. Nicht ins Internet veröffentlichen.
 
+## Screenshots
+
+<p align="center"><img src="assets/screenshots/de.webp" alt="Die Kanalliste, auf Deutsch" width="900"></p>
+
+Die Oberfläche gibt es in acht Sprachen. Der Umschalter oben wechselt das README; die Sprache der
+Anwendung selbst wird in den **Einstellungen** oder über `ACESTREAM_SUITE_LANGUAGE` gewählt (`es`,
+`en`, `fr`, `it`, `de`, `ru`, `zh`, `ja`). Je ein Screenshot pro Sprache liegt in
+`assets/screenshots/`.
+
 ## Schnellstart (Docker)
 
 Voraussetzungen: Docker mit Compose v2 und eine AceStream-Engine, die aus dem Container über HTTP

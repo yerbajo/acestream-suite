@@ -29,6 +29,14 @@ logiciel tiers et conserve son propre nom.
 > **Pas d'authentification.** L'application est prévue pour un réseau privé. Quiconque atteint le port
 > peut parcourir le catalogue et démarrer des flux. Ne la publiez pas sur internet.
 
+## Captures d'écran
+
+<p align="center"><img src="assets/screenshots/fr.webp" alt="La liste des chaînes, en français" width="900"></p>
+
+L'interface existe en huit langues. Le sélecteur en haut de page change le README ; la langue de
+l'application se choisit dans **Réglages** ou avec `ACESTREAM_SUITE_LANGUAGE` (`es`, `en`, `fr`, `it`,
+`de`, `ru`, `zh`, `ja`). Une capture par langue se trouve dans `assets/screenshots/`.
+
 ## Démarrage rapide (Docker)
 
 Prérequis : Docker avec Compose v2, et un moteur AceStream joignable en HTTP depuis le conteneur

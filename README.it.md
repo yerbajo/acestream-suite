@@ -27,6 +27,14 @@ software di terze parti e mantiene il proprio nome.
 > **Nessuna autenticazione.** L'app è pensata per una rete privata. Chiunque possa raggiungere la
 > porta può sfogliare il catalogo e avviare gli stream. Non pubblicarla su internet.
 
+## Screenshot
+
+<p align="center"><img src="assets/screenshots/it.webp" alt="L'elenco dei canali, in italiano" width="900"></p>
+
+L'interfaccia è disponibile in otto lingue. Il selettore in alto cambia il README; la lingua
+dell'applicazione si sceglie in **Impostazioni** o con `ACESTREAM_SUITE_LANGUAGE` (`es`, `en`, `fr`,
+`it`, `de`, `ru`, `zh`, `ja`). C'è uno screenshot per lingua in `assets/screenshots/`.
+
 ## Avvio rapido (Docker)
 
 Requisiti: Docker con Compose v2, e un motore AceStream raggiungibile via HTTP dal container (questa
