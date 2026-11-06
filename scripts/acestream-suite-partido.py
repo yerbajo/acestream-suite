@@ -80,7 +80,7 @@ WHAT THIS CANNOT DO (measured limitation)
     `suite-aar/docs/acestream-manual.md`: acesearch does not search for an event, it searches for the
     channel that airs it, and the frame is the owner's eyes.
 
-INSTALL (on dev.albertucho.home, the .245 host)
+INSTALL (on the host that runs the suite)
     install -m 0755 scripts/acestream-suite-partido.py /usr/local/bin/acestream-suite-partido
     mkdir -p /var/lib/acestream-suite-partido
     /usr/local/bin/acestream-suite-partido --dry-run     # what it would do right now, touching nothing
@@ -129,7 +129,7 @@ def env(name, default):
 # host, al lado de su propio contenedor.
 ACESTREAM_SUITE_URL = env("ACESTREAM_SUITE_URL", "http://127.0.0.1:8083")
 # El motor de acesearch: el nginx del stack de .28, el mismo que consultan las listas.
-ENGINE_URL = env("ACESTREAM_SUITE_PARTIDO_ENGINE", "http://192.168.1.28:8081")
+ENGINE_URL = env("ACESTREAM_SUITE_PARTIDO_ENGINE", "http://127.0.0.1:6878")
 STATE_PATH = env("ACESTREAM_SUITE_PARTIDO_STATE", "/var/lib/acestream-suite-partido/state.json")
 # S11: el conjunto en directo que lee `scripts/acestream-suite-playlist.py` para decidir la carpeta. Se
 # escribe tras cada pasada; el mismo nombre de variable de entorno lo mueve en los dos scripts.
@@ -138,7 +138,7 @@ LOG_PATH = env("ACESTREAM_SUITE_PARTIDO_LOG", "/var/log/acestream-suite-partido.
 LOCK_PATH = env("ACESTREAM_SUITE_PARTIDO_LOCK", "/var/lock/acestream-suite-partido.lock")
 TIMEOUT = float(env("ACESTREAM_SUITE_PARTIDO_TIMEOUT", "30"))
 # S1: la API de la Euroliga contesta 403 al User-Agent por defecto de urllib (`Python-urllib/3.6`) y 200 a
-# cualquier otro (medido el 2026-11-04 desde el propio .245). Se identifica el cliente, que es lo que
+# cualquier otro (medido el 2026-11-04 desde el propio host). Se identifica el cliente, que es lo que
 # pide una API cuando distingue por agente.
 USER_AGENT = env("ACESTREAM_SUITE_PARTIDO_UA", "acestream-suite-partido/1.0")
 WINDOW_BEFORE = int(env("ACESTREAM_SUITE_PARTIDO_WINDOW_BEFORE", "60"))
@@ -152,7 +152,7 @@ LIVE_TOLERANCE_BEFORE = int(env("ACESTREAM_SUITE_PARTIDO_LIVE_TOLERANCE_BEFORE",
 LIVE_TOLERANCE_AFTER = int(env("ACESTREAM_SUITE_PARTIDO_LIVE_TOLERANCE_AFTER", "5"))
 # El `Origin` que exige el POST /import de la app (su comprobacion CSRF, ver docs/acestream-suite.md): la
 # direccion LAN de la casa, no la de loopback con la que este script lee.
-ORIGIN = env("ACESTREAM_SUITE_PARTIDO_ORIGIN", "http://192.168.1.245:8083")
+ORIGIN = env("ACESTREAM_SUITE_PARTIDO_ORIGIN", "http://127.0.0.1:8083")
 # S1: los partidos y su hora real de saque. Ninguna de las dos fuentes pide clave.
 FOOTBALL_URL = env(
     "ACESTREAM_SUITE_PARTIDO_FOOTBALL_URL",

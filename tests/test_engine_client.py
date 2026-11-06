@@ -119,7 +119,7 @@ def test_the_stream_parameter_can_be_renamed_for_another_engine(client, respx_mo
 
 
 def test_engine_urls_are_rebased_onto_the_configured_engine(respx_mock):
-    remote = "http://192.168.1.50:6878"
+    remote = "http://remote.example.test:6878"
     respx_mock.get(f"{remote}/ace/getstream").respond(json=GETSTREAM_OK)
 
     with EngineClient(remote, timeout=1) as c:

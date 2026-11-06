@@ -1,6 +1,6 @@
 # Deletes the acestream-suite channels that are not online, once the verification has finished.
 #
-# Installed by hand on dev.albertucho.home:
+# Installed by hand on the host:
 #   install -m 0755 scripts/acestream-suite-prune.py /usr/local/bin/acestream-suite-prune
 #   install -m 0644 scripts/acestream-suite-prune.cron /etc/cron.d/acestream-suite-prune
 #   /usr/local/bin/acestream-suite-prune --dry-run     # what it would do right now, touching nothing
@@ -21,4 +21,4 @@
 # what is already known to be dead without waiting, still never touching an unchecked channel.
 SHELL=/bin/bash
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin
-10,30,50 * * * * root /usr/local/bin/acestream-suite-prune >/dev/null 2>&1
+10,30,50 * * * * root [ -r /etc/acestream-suite.env ] && . /etc/acestream-suite.env; /usr/local/bin/acestream-suite-prune >/dev/null 2>&1

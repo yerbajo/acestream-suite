@@ -81,7 +81,7 @@ def test_play_from_another_site_is_rejected(web, channel, opened):
 
 
 def test_url_mode_hands_the_engine_link_to_the_page(web, channel, monkeypatch):
-    playback = f"http://192.168.1.28:8081/ace/r/{HASH_A}/f4283e11274fae1ced9ef41a4c173857"
+    playback = f"http://engine.example.test:6878/ace/r/{HASH_A}/f4283e11274fae1ced9ef41a4c173857"
 
     class Stream:
         playback_url = playback

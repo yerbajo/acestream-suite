@@ -1,10 +1,10 @@
 # acestream-suite's catalog as an M3U playlist for the house players (VLC, Kodi, Dispatcharr).
 #
-# Installed by hand on dev.albertucho.home:
+# Installed by hand on the host:
 #   install -m 0755 scripts/acestream-suite-playlist.py /usr/local/bin/acestream-suite-playlist
 #   install -m 0644 scripts/acestream-suite-playlist.cron /etc/cron.d/acestream-suite-playlist
 #
-# The link it keeps alive is http://192.168.1.245/varios/acestream-suite.m3u, served by the Caddy that
+# The link it keeps alive is http://127.0.0.1/varios/acestream-suite.m3u, served by the Caddy that
 # already serves /srv/www/varios over plain HTTP.
 #
 # Every fifteen minutes, offset from the hour and the half hour so it never meets a backup:

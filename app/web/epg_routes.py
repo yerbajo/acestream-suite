@@ -3,7 +3,7 @@
 The catalogue's pages live in `app/web/routes.py`; what is here is the guide on top of them: one
 channel's day grid, the mapping screen, and the XMLTV and JSON that a player and the playlist
 builder fetch. Nothing in this module imports `app.web.check_routes` and no page queues a check: the
-guide is a read of stored listings, and putting a second queue on the `.28` engine is the exact
+guide is a read of stored listings, and putting a second queue on the engine is the exact
 mistake `app/cli.py` exists to avoid. The only writes here are the mapping screen's two, and they
 touch `epg_alias` and `channel.guide_channel_id` and nothing else.
 

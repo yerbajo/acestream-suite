@@ -2,7 +2,7 @@
 """Writes acestream-suite's catalogue as a playlist with a guide: `acestream-suite-guide.m3u`.
 
 WHY THIS EXISTS
-    acestream-suite (http://192.168.1.245:8083) carries the catalogue AND a channel-to-guide mapping:
+    acestream-suite (http://127.0.0.1:8083) carries the catalogue AND a channel-to-guide mapping:
     every channel it could match to an XMLTV source has the source's channel id on it. A player
     cannot see that mapping from an M3U alone, and it cannot see the guide either, because the M3U
     it consumes names no XMLTV document. This script is what closes that gap: a second playlist,
@@ -11,7 +11,7 @@ WHY THIS EXISTS
     now/next and a grid for the channels that have a guide.
 
 WHY A SECOND LIST AND NOT AN EDIT
-    `http://192.168.1.245/varios/acestream-suite.m3u` is what Dispatcharr consumes, with `tvg-id` =
+    `http://127.0.0.1/varios/acestream-suite.m3u` is what Dispatcharr consumes, with `tvg-id` =
     the 40-hex AceStream content id on every line. Changing that id in place re-maps the live
     line-up (the account has ~1,072 streams marked stale), which the owner deferred. So this script
     writes a NEW file and never touches the lists `scripts/acestream-suite-playlist.py` owns: the TV
@@ -27,7 +27,7 @@ WHERE THE GUIDE IDS COME FROM
     is not a guide id any provider knows, so a `tvg-id` on that line points at nothing.
 
 WHERE THE LINKS POINT
-    At the HLS bridge, exactly like the other four lists: `http://192.168.1.245:8084/<hash>/index.m3u8`
+    At the HLS bridge, exactly like the other four lists: `http://127.0.0.1:8084/<hash>/index.m3u8`
     (`acestream-suite/hls-bridge.py`). NOT at the engine. The engine serves one reader per content, so a list
     that calls `:8081/ace/getstream` directly competes with the bridge for the same channel and both
     lose it (measured 2026-10-18: 0 manifests and 23 failures in a minute). `direct.m3u`, written by
@@ -40,10 +40,10 @@ WHY THE CATALOGUE IS FILTERED BY AVAILABILITY
     SQLite) and every channel in the catalogue has a `check_result` row, so the filter returns the
     whole live catalogue. `--status ""` exists if a caller ever wants the unfiltered list back.
 
-INSTALL (on dev.albertucho.home, the .245 host)
+INSTALL (on the host that runs the suite)
     install -m 0755 scripts/acestream-suite-guide-playlist.py /usr/local/bin/acestream-suite-guide-playlist
     /usr/local/bin/acestream-suite-guide-playlist          # first run, so the file exists before anything reads it
-    # Served at http://192.168.1.245/varios/acestream-suite-guide.m3u; the guide at ...:8083/epg.xml
+    # Served at http://127.0.0.1/varios/acestream-suite-guide.m3u; the guide at ...:8083/epg.xml
     # A copy under another name, if a consumer needs one, comes from ACESTREAM_SUITE_COMPAT_ALIASES
     # (the host keeps its value in /etc/acestream-suite.env, which the .cron loads).
 
@@ -85,11 +85,11 @@ def env(name, default):
 # loopback because the script runs on the host next to its own container.
 ACESTREAM_SUITE_GUIDE_URL = env("ACESTREAM_SUITE_GUIDE_URL", "http://127.0.0.1:8083")
 # El puente HLS, igual que en las otras cuatro listas: el motor solo sirve un lector por contenido.
-HLS_BASE = env("ACESTREAM_SUITE_HLS_BASE", "http://192.168.1.245:8084")
+HLS_BASE = env("ACESTREAM_SUITE_HLS_BASE", "http://127.0.0.1:8084")
 OUTPUT = env("ACESTREAM_SUITE_GUIDE_PLAYLIST_OUTPUT", "/srv/www/varios/acestream-suite-guide.m3u")
 # The URL the PLAYER fetches the guide from, not the localhost one this script reads. A player on
 # the LAN cannot reach 127.0.0.1:8083, so the header carries the host's own address.
-URL_TVG = env("ACESTREAM_SUITE_GUIDE_URL_TVG", "http://192.168.1.245:8083/epg.xml")
+URL_TVG = env("ACESTREAM_SUITE_GUIDE_URL_TVG", "http://127.0.0.1:8083/epg.xml")
 LOG_PATH = env("ACESTREAM_SUITE_GUIDE_PLAYLIST_LOG", "/var/log/acestream-suite-guide-playlist.log")
 LOCK_PATH = env("ACESTREAM_SUITE_GUIDE_PLAYLIST_LOCK",
                 "/var/lock/acestream-suite-guide-playlist.lock")
@@ -323,7 +323,7 @@ def self_test():
     lines = text.splitlines()
 
     # The header advertises the guide the player has to fetch; it is the first line, always.
-    assert lines[0] == '#EXTM3U url-tvg="http://192.168.1.245:8083/epg.xml"', lines[0]
+    assert lines[0] == '#EXTM3U url-tvg="http://127.0.0.1:8083/epg.xml"', lines[0]
     assert len(lines) == 5, "2 channels are 1 + 2 lines each, plus the header: %d" % len(lines)
     # Ordered by category (Deportes ES first): the unmapped row is first and has NO tvg-id.
     assert "tvg-id" not in lines[1], lines[1]
@@ -358,7 +358,7 @@ def self_test():
     assert 'tvg-name="M. Liga de Campeones"' in texto_repetido, texto_repetido
     assert ("11" * 20) in texto_repetido, texto_repetido
     # An empty catalogue is still a valid playlist, not an empty file, and the header survives.
-    assert build_playlist([], {}) == '#EXTM3U url-tvg="http://192.168.1.245:8083/epg.xml"\n'
+    assert build_playlist([], {}) == '#EXTM3U url-tvg="http://127.0.0.1:8083/epg.xml"\n'
     # The guide URL is overridable and sanitised like every other attribute.
     assert (
         build_playlist([], {}, url_tvg='http://otra/epg.xml"x').splitlines()[0]

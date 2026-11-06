@@ -23,7 +23,7 @@ from app.services.importer import ImportResult, Reason
 # THE POINT OF THE SEED COMMAND IS THAT IT IMPORTS NOTHING FROM `app.web`. `start_checks` lives in
 # the import form and in the check routes, so a process that never loads the web layer cannot reach
 # the queue: seeding the live service's 581 channels through the form would open 581 engine sessions
-# on the .28 engine and the tunnel at once, and the guide's task record in `odd/tasks/` keeps that
+# on the engine and the tunnel at once, and the guide's task record in `odd/tasks/` keeps that
 # queue to the one deployment on 8083.
 
 # A whole catalogue fed in would bury the summary under one line per rejected channel.

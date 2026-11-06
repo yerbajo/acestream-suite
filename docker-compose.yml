@@ -1,7 +1,7 @@
-# acestream-suite — an AceStream front end on dev.albertucho.home (192.168.1.245), LAN only.
+# acestream-suite — an AceStream front end for a house LAN.
 #
 #   cd /opt/acestream-suite && docker compose build && docker compose up -d
-#   http://192.168.1.245:8083
+#   http://<host>:<published port>
 #
 # WHAT ACEList IS: a catalogue of AceStream links — channels with a Content ID, an availability
 # check against the engine, a screenshot, categories, search — and a play button. Upstream is a
@@ -21,11 +21,11 @@
 # not smuggled in here.
 #
 # WHY IT POINTS AT THE OTHER HOST: the engine it talks to is NOT the one running on this machine.
-# 192.168.1.245 already has `ghcr.io/martinbjeldbak/acestream-http-proxy` (engine 3.2.11) on
+# The host may already run `ghcr.io/martinbjeldbak/acestream-http-proxy` (engine 3.2.11) on
 # 6878/8621, and that engine's P2P leaves through the house IP with no tunnel. The house decided on
 # 2026-10-06 (see odd/tasks/acestream-search.md, in the suite-aar repository) that AceStream P2P goes
 # through the WireGuard tunnel, which is why the search service was built on the other VM at all. So
-# the engine used here is the one on **192.168.1.28**, inside its Gluetun tunnel, reached over the
+# the engine used here is the one inside a Gluetun tunnel, reached over the
 # LAN on port 8081 — the nginx of that stack's `acestream` container, which proxies the engine's
 # whole HTTP API and rewrites the engine's `http://localhost:6878/...` URLs to the address you asked
 # on. One base URL is therefore enough for the API and for the playback link (the app rebases every
@@ -49,15 +49,15 @@ services:
     image: acestream-suite:1.3.0
     restart: unless-stopped
     # The image's base is python:3.12-slim, whose default user is root. Everything this app writes
-    # lands in the bind mount below (`acestream-suite.db` + screenshots/), so it runs as the host's
-    # `ingenieria` account and that directory is chowned 1000:1000 before the first `up -d`.
+    # lands in the bind mount below (`acestream-suite.db` + screenshots/), so it runs as the account
+    # that owns that directory: chown it to 1000:1000 before the first `up -d`.
     user: "1000:1000"
     environment:
       - TZ=Europe/Madrid
       # The tunneled engine on the other VM, through the nginx that proxies it. Verified from this
       # host on 2026-10-09: `/webui/api/service?method=get_version` answers 3.2.11, `/search?query=`
       # answers JSON, and `/ace/getstream?infohash=` answers 302 with a Location already rewritten
-      # to http://192.168.1.28:8081/ace/r/<hash>/<token> — a link that opens directly from the LAN.
+      # to http://<engine>:<port>/ace/r/<hash>/<token> — a link that opens directly from the LAN.
       #
       # This is only the DEFAULT: the engine URL is a saved setting in the app (stored values win
       # over the environment), so the owner can point it elsewhere from the settings page without
@@ -69,7 +69,7 @@ services:
       # for BOTH the Host header check and the CSRF origin check; without this the LAN gets 400 on
       # every request and 403 on every write. Keep the CSRF defence working by listing the real
       # addresses instead of bypassing it.
-      # `dev.albertucho.home` resolves to this host in the house BIND zone (192.168.1.2).
+      # Add every address the browser types; the house DNS name belongs here too.
       - ACESTREAM_SUITE_ALLOWED_HOSTS=${ACESTREAM_SUITE_ALLOWED_HOSTS:-}
       # No VLC exists here and launching one from a container would be pointless: in `url` mode the
       # app starts the engine session and hands the URL to the page instead of to a local player.
@@ -104,7 +104,7 @@ services:
       - ACESTREAM_SUITE_EPG_REFRESH_HOURS=${ACESTREAM_SUITE_EPG_REFRESH_HOURS:-12}
     volumes:
       # The whole application state: `acestream-suite.db` (SQLite) and `screenshots/`. `./data`
-      # resolves against this file, so the deployment on dev.albertucho.home uses
+      # resolves against this file, so a deployment uses
       # /opt/acestream-suite/data, created by copying the catalogue and the screenshots in place.
       #
       # Docker creates a MISSING bind source as a root-owned empty directory — the wrong owner for
@@ -145,7 +145,7 @@ services:
       - TZ=Europe/Madrid
       - PORT=8084
       # El motor tunelado de la VM de medios, igual que en el servicio de arriba.
-      - ACESTREAM_PUBLIC=http://192.168.1.28:8081
+      - ACESTREAM_PUBLIC=${ACESTREAM_PUBLIC:-http://127.0.0.1:6878}
       # Cuánto aguanta una sesión sin que nadie pida nada, y tope de sesiones a la vez.
       - HLS_IDLE_SECONDS=45
       - HLS_MAX_SESSIONS=4

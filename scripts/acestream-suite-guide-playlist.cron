@@ -3,7 +3,7 @@
 # Installed through scripts/crons-install.sh (this file is in its JOBS list; the host crontab is
 # generated from it, never edited by hand).
 #
-# The link it keeps alive is http://192.168.1.245/varios/acestream-suite-guide.m3u, served by the same Caddy
+# The link it keeps alive is http://127.0.0.1/varios/acestream-suite-guide.m3u, served by the same Caddy
 # that already serves /srv/www/varios over plain HTTP.
 #
 # IT IS NOT THE LIST THE TV READS TODAY. The TV reads hls.m3u, kept by acestream-suite-playlist.cron,

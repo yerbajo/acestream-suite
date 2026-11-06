@@ -30,7 +30,7 @@ BACKUP
     La base de datos no se mueve de sitio (`ACESTREAM_SUITE_DB`): solo la copia del respaldo lleva el
     nombre del producto.
 
-INSTALL (on dev.albertucho.home)
+INSTALL (on the host that runs the suite)
     install -m 0755 scripts/acestream-suite-prune.py /usr/local/bin/acestream-suite-prune
     install -m 0644 scripts/acestream-suite-prune.cron /etc/cron.d/acestream-suite-prune
     /usr/local/bin/acestream-suite-prune --dry-run    # what it would do right now, touching nothing

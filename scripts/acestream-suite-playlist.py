@@ -2,7 +2,7 @@
 """Writes acestream-suite's catalogue as M3U playlists, served over plain HTTP on the house LAN.
 
 WHY THIS EXISTS
-    acestream-suite (http://192.168.1.245:8083) catalogs AceStream links, but a catalog in a web page is
+    acestream-suite (http://127.0.0.1:8083) catalogs AceStream links, but a catalog in a web page is
     only useful to whoever is sitting in front of that web page. Every other player in the house —
     VLC on a phone, Kodi on the TV box, Dispatcharr behind Jellyfin's Live TV — wants a playlist:
     a URL that answers with `#EXTM3U` and a stream URL per channel. This script is the source of
@@ -54,18 +54,18 @@ THE LIVE SET: THE MATCH ON AIR, NOT A CATEGORY
 WHERE THE LINKS POINT
     The stream URLs in the playlists are NOT acestream-suite's. Five of the six point at the HLS bridge
     (`${ACESTREAM_SUITE_HLS_BASE}`, `:8084/<hash>/index.m3u8` on this deployment), and only
-    `direct.m3u` carries the engine's own MPEG-TS URL — `http://192.168.1.28:8081/ace/getstream`
+    `direct.m3u` carries the engine's own MPEG-TS URL — `http://127.0.0.1:6878/ace/getstream`
     `?infohash=<hash>`, the tunneled engine behind its nginx. The bridge is the default for a reason
     measured on 2026-10-18: the engine serves ONE reader per content, so a direct reader and the
     bridge asking for the same channel leave both without it. One list, one reader: the bridge.
     `infohash` is the engine's parameter (the Linux 3.2.11 build answers `failed to load content`
     to `id`).
 
-INSTALL (on dev.albertucho.home, the .245 host)
+INSTALL (on the host that runs the suite)
     install -m 0755 scripts/acestream-suite-playlist.py /usr/local/bin/acestream-suite-playlist
     install -m 0644 scripts/acestream-suite-playlist.cron /etc/cron.d/acestream-suite-playlist
     /usr/local/bin/acestream-suite-playlist          # first run, so the files exist before anything reads them
-    # The playlists are then at http://192.168.1.245/varios/{acestream-suite,deportes,espana}.m3u
+    # The playlists are then at http://127.0.0.1/varios/{acestream-suite,deportes,espana}.m3u
     # (a copy under another name, if a consumer needs one, comes from ACESTREAM_SUITE_COMPAT_ALIASES)
 
 USAGE
@@ -106,10 +106,10 @@ def env(name, default):
 
 
 ACESTREAM_SUITE_URL = env("ACESTREAM_SUITE_URL", "http://127.0.0.1:8083")
-ENGINE_URL = env("ACESTREAM_SUITE_PLAYLIST_ENGINE", "http://192.168.1.28:8081")
+ENGINE_URL = env("ACESTREAM_SUITE_PLAYLIST_ENGINE", "http://127.0.0.1:6878")
 OUTPUT_DIR = env("ACESTREAM_SUITE_PLAYLIST_DIR", "/srv/www/varios")
 # El puente HLS (acestream-suite/hls-bridge.py): la misma lista, pero cada canal como manifiesto.
-HLS_BASE = env("ACESTREAM_SUITE_HLS_BASE", "http://192.168.1.245:8084")
+HLS_BASE = env("ACESTREAM_SUITE_HLS_BASE", "http://127.0.0.1:8084")
 LOG_PATH = env("ACESTREAM_SUITE_PLAYLIST_LOG", "/var/log/acestream-suite-playlist.log")
 LOCK_PATH = env("ACESTREAM_SUITE_PLAYLIST_LOCK", "/var/lock/acestream-suite-playlist.lock")
 # El conjunto en directo de `scripts/acestream-suite-partido.py`: la misma variable de entorno en los
@@ -677,7 +677,7 @@ def self_test():
     assert 'tvg-id="%s"' % partido["content_id"] in solo_madrid["madrid.m3u"], solo_madrid["madrid.m3u"]
     assert 'tvg-id="%s"' % la_liga["content_id"] in solo_madrid["madrid.m3u"], solo_madrid["madrid.m3u"]
     assert campeon["content_id"] not in solo_madrid["madrid.m3u"], solo_madrid["madrid.m3u"]
-    assert solo_madrid["madrid.m3u"].splitlines()[2].startswith("http://192.168.1.245:8084/"), (
+    assert solo_madrid["madrid.m3u"].splitlines()[2].startswith("http://127.0.0.1:8084/"), (
         solo_madrid["madrid.m3u"]
     )
     assert solo_madrid["madrid.m3u"].splitlines()[2].endswith("/index.m3u8"), solo_madrid["madrid.m3u"]

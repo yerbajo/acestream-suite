@@ -9,7 +9,7 @@ def test_defaults_when_nothing_is_saved(db):
 
 def test_saved_settings_are_loaded_back(db):
     saved = AppSettings(
-        engine_url="http://192.168.1.5:6878",
+        engine_url="http://engine.example.test:6878",
         engine_timeout=9.5,
         min_peers=3,
         check_timeout=45,

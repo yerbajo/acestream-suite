@@ -155,9 +155,8 @@ rechazarse.
 | `tests/` | La suite de pruebas de la aplicación (pytest, ~640 pruebas, sin red): `pytest -q` desde la raíz del repositorio. |
 | `scripts/` | Los trabajos opcionales del host: las listas, el importador del partido, la poda, sus `.cron` y `crons-install.sh`. |
 | `assets/` | El logotipo y el favicon que la imagen copia al directorio estático de la app. |
-| `docs/` | Las guías del operador, inglés canónico con espejo en español. |
 
-La procedencia, y lo que significa para ti, está en `NOTICE.md`.
+La procedencia, y lo que significa para ti, está en `LICENSE`.
 
 ## El puente HLS
 
@@ -204,24 +203,24 @@ contenedor (`docker exec acestream-suite python3 -m app.cli epg-refresh`).
 
 ## Documentación
 
-- **`docs/acestream-suite.md`** — despliegue y operación: cómo se construye la imagen, el runbook, las
-  listas y quién las lee, el puente, resolución de problemas, límites conocidos.
-- **`docs/acestream-suite-guide.md`** — la capa de guía/EPG: fuentes, el refresco, el mapeo, las
-  salidas y qué las rompe.
-- Cada uno tiene un espejo completo en español al lado: `docs/acestream-suite.es.md` y
-  `docs/acestream-suite-guide.es.md`.
+- `README.es.md` — este documento en español.
+- `LICENSE` — MIT para el trabajo propio y la procedencia del código de la aplicación.
+- En el propio código: cada módulo lleva su docstring con lo que decide y por qué; `python -m app.cli
+  --help` y el `--help` de cada script documentan sus opciones.
 
 ## Licencia y avisos de terceros
 
 El trabajo propio de este repositorio — los ficheros de despliegue, los scripts, la documentación, el
-logotipo y el código de la aplicación — tiene licencia MIT; ver `LICENSE`. La aplicación nació del
-proyecto **AceList**, que no publica licencia, y `NOTICE.md` deja constancia de esa procedencia, de la
-marca de AceStream dentro del logotipo y de las licencias del software que instala la imagen. Léelo
-antes de redistribuir una imagen construida desde este repositorio.
+logotipo y el código de la aplicación — tiene licencia MIT; ver `LICENSE`. Ese mismo fichero deja
+constancia de la procedencia del código (nació del proyecto **AceList**, que no publica licencia) y del
+origen de la marca de AceStream dentro del logotipo. Léelo antes de redistribuir una imagen construida
+aquí. La imagen instala además software de terceros: `python:3.12-slim`, los paquetes de Debian
+(`ffmpeg`, `curl`) y las dependencias de `pyproject.toml`, cada uno con su licencia; `htmx`
+(BSD-2-Clause) y los trazos de Lucide (ISC) están vendorizados en `app/web/`.
 
 ## Cómo se despliega aquí
 
-Los runbooks de `docs/` describen el despliegue doméstico del autor: un host en la LAN, un contenedor
+Un despliegue doméstico tiene esta forma: un host en la LAN, un contenedor
 al lado de un motor tunelizado por WireGuard en otra máquina, un proxy inverso sirviendo un directorio
 de listas, y trabajos de cron en el host. Léelos como un ejemplo trabajado con las mediciones que lo
 respaldan, no como la única forma de ejecutar esto — el fichero compose es la interfaz, y las

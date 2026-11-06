@@ -75,7 +75,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("PORT", "8084"))
-ENGINE = os.environ.get("ACESTREAM_PUBLIC", "http://192.168.1.28:8081").rstrip("/")
+ENGINE = os.environ.get("ACESTREAM_PUBLIC", "http://127.0.0.1:6878").rstrip("/")
 ROOT = os.environ.get("HLS_ROOT", "/hls")
 IDLE = float(os.environ.get("HLS_IDLE_SECONDS", "45"))       # sin peticiones: se cierra
 STARTUP = float(os.environ.get("HLS_STARTUP_SECONDS", "8"))  # hasta que hay manifiesto

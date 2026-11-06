@@ -150,9 +150,8 @@ on the way up, so a backup from an older version is upgraded rather than rejecte
 | `tests/` | The application's test suite (pytest, ~640 tests, no network): `pytest -q` from the repository root. |
 | `scripts/` | The optional host jobs: the playlist builders, the match-day importer, the prune, their `.cron` files and `crons-install.sh`. |
 | `assets/` | The logo and the favicon the image copies into the app's static directory. |
-| `docs/` | The operator guides, English canonical with a Spanish mirror. |
 
-Provenance, and what that means for you, is in `NOTICE.md`.
+Provenance, and what that means for you, is in `LICENSE`.
 
 ## The HLS bridge
 
@@ -198,25 +197,25 @@ checks with no network and no files. The playlist jobs need a web server serving
 
 ## Documentation
 
-- **`docs/acestream-suite.md`** — deployment and operation: how the image is built, the runbook, the
-  playlists and who reads them, the bridge, troubleshooting, known limits.
-- **`docs/acestream-suite-guide.md`** — the guide/EPG layer: sources, the refresh, the mapping, the
-  outputs and what breaks them.
-- Each has a complete Spanish mirror next to it: `docs/acestream-suite.es.md` and
-  `docs/acestream-suite-guide.es.md`.
+- `README.es.md` — this document in Spanish.
+- `LICENSE` — MIT for the work authored here, and the provenance of the application code.
+- Inline: every module carries a docstring that says what it decides and why; `python -m app.cli --help`
+  and each script's `--help` document their own options.
 
 ## License and third-party notices
 
 The work authored here — the deployment files, the scripts, the documentation, the logo and the
-application code — is MIT-licensed; see `LICENSE`. The application started life as the **AceList**
-project, which publishes no license, and `NOTICE.md` records that provenance, the AceStream mark
-inside the logo, and the licenses of the software the image installs. Read it before redistributing
-an image built from this repository.
+application code — is MIT-licensed; see `LICENSE`. The same file records the provenance of the
+application code (it started from the **AceList** project, which publishes no license) and where the
+AceStream mark inside the logo comes from. Read it before redistributing an image built here. The
+image also installs third-party software: `python:3.12-slim`, the Debian packages (`ffmpeg`, `curl`),
+and the Python dependencies in `pyproject.toml`, each under its own license; `htmx` (BSD-2-Clause) and
+the Lucide icon strokes (ISC) are vendored in `app/web/`.
 
 ## How this is deployed here
 
-The runbooks in `docs/` describe the author's own home deployment: one LAN host, a container next to
-a WireGuard-tunnelled engine on another machine, a reverse proxy serving a directory of playlists,
-and cron jobs on the host. Read them as a worked example with the measurements that back it, not as
-the only way to run this — the compose file is the interface, and the environment variables above are
+A house deployment looks like this: one LAN host running the container next to a WireGuard-tunnelled
+engine on another machine, a reverse proxy serving a directory of playlists, and the cron jobs above
+on the host. That is the shape the scripts assume, not the only way to run it — the compose file is the
+interface, and the environment variables above are
 the knobs.

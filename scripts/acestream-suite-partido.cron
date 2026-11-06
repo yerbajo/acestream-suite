@@ -3,7 +3,7 @@
 # Installed through scripts/crons-install.sh (this file is in its JOBS list; the host crontab is
 # generated from it, never edited by hand, and /etc/cron.d is not touched).
 #
-# Installed by hand on dev.albertucho.home, once:
+# Installed by hand on the host, once:
 #   install -m 0755 scripts/acestream-suite-partido.py /usr/local/bin/acestream-suite-partido
 #   mkdir -p /var/lib/acestream-suite-partido
 #   /usr/local/bin/acestream-suite-partido --dry-run     # qué haría ahora mismo, sin tocar nada
@@ -31,4 +31,4 @@
 # son unas pocas líneas.
 SHELL=/bin/bash
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin
-1,11,21,31,41,51 * * * * root /usr/local/bin/acestream-suite-partido >/dev/null 2>&1
+1,11,21,31,41,51 * * * * root [ -r /etc/acestream-suite.env ] && . /etc/acestream-suite.env; /usr/local/bin/acestream-suite-partido >/dev/null 2>&1

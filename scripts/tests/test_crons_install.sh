@@ -349,12 +349,22 @@ check "the generated crontab has the guide-refresh block" \
 # for another consumer lives outside the repository. Only those two, and the line is harmless when
 # the file is absent (POSIX sh; the crontab runs /bin/sh).
 ENV_LINE='[ -r /etc/acestream-suite.env ] && . /etc/acestream-suite.env;'
+# Los cinco trabajos del producto cargan el fichero del host: el repositorio trae valores genéricos
+# y los de cada despliegue viven ahí, así que ninguno puede depender del entorno por su cuenta.
 for j in acestream-suite-playlist acestream-suite-guide-playlist; do
   check "$j loads /etc/acestream-suite.env" \
     "$(grep -qF "$ENV_LINE /usr/local/bin/$j " "$TMP/out"; echo $?)"
 done
-check "only the two playlist jobs load /etc/acestream-suite.env" \
-  "$([ "$(grep -cF "$ENV_LINE" "$TMP/out")" = 2 ]; echo $?)"
+for j in acestream-suite-partido acestream-suite-prune; do
+  check "$j loads /etc/acestream-suite.env" \
+    "$(grep -qF "$ENV_LINE /usr/local/bin/$j " "$TMP/out"; echo $?)"
+done
+check "the guide refresh loads /etc/acestream-suite.env" \
+  "$(grep -qF "$ENV_LINE /usr/bin/flock" "$TMP/out"; echo $?)"
+check "all five product jobs load /etc/acestream-suite.env" \
+  "$([ "$(grep -cF "$ENV_LINE" "$TMP/out")" = 5 ]; echo $?)"
+check "no job outside the product loads it" \
+  "$([ "$(grep -F "$ENV_LINE" "$TMP/out" | grep -vc 'acestream-suite')" = 0 ]; echo $?)"
 check "the env-file load does not break when the file is absent" \
   "$(sh -c '[ -r "$1" ] && . "$1"; exit 0' sh "$TMP/no-existe.env"; echo $?)"
 export CRONS_SOURCE_DIR="$TMP/src"
