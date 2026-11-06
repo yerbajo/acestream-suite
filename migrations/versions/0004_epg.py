@@ -24,7 +24,8 @@ def upgrade() -> None:
         sa.Column("icon", sa.String(length=500), nullable=True),
         sa.Column("last_seen", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_epg_channel")),
-        # Two providers may use the same id for different channels, so the id alone is not a key.
+        # A source and its own id together. Providers reuse each other's ids for different
+        # channels, so an id by itself identifies nothing.
         sa.UniqueConstraint(
             "source", "source_channel_id", name="uq_epg_channel_source_source_channel_id"
         ),
@@ -44,9 +45,10 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_programme")),
-        # What turns a second refresh of the same listings into an update instead of a second copy
-        # of every programme. Spelled out in full because the naming convention would take only the
-        # first column and the result would read as if a channel had one programme.
+        # What makes refreshing the same listings an update instead of a second copy of every
+        # programme: one row per channel and start time. The name is spelled out in full because
+        # the convention would take only the first column, and `uq_programme_epg_channel_id` reads
+        # as if a channel had a single programme.
         sa.UniqueConstraint("epg_channel_id", "start", name="uq_programme_epg_channel_id_start"),
     )
 

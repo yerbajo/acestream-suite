@@ -1,5 +1,5 @@
-"""Service layer: each public function is one unit of work and commits on success.
+"""The service layer: one public function is one unit of work, and it commits when it succeeds.
 
-The session is injected by the caller. On failure the session is rolled back
-and a `ServiceError` subclass is raised.
+The session belongs to the caller and is passed in. A failure rolls it back and leaves a
+`ServiceError` subclass to be raised, so a page and a command deal with errors the same way.
 """

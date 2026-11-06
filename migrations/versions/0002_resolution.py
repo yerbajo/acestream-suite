@@ -17,7 +17,8 @@ _RESOLUTIONS = "'480p', '720p', '1080p', '4k', 'other'"
 
 
 def upgrade() -> None:
-    # Batch mode: SQLite cannot add a CHECK constraint to an existing table.
+    # Batch mode, because SQLite cannot put a new CHECK constraint on a table that already exists:
+    # Alembic rebuilds the table and copies the rows into it instead.
     with op.batch_alter_table("channel") as batch:
         batch.add_column(sa.Column("resolution", sa.String(length=8), nullable=True))
         batch.create_check_constraint(

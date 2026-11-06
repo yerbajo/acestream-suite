@@ -15,6 +15,8 @@ depends_on = None
 
 
 def upgrade() -> None:
+    # The server default is what lets the column be NOT NULL without a backfill: SQLite fills the
+    # existing rows from it while the column is added.
     with op.batch_alter_table("channel") as batch:
         batch.add_column(
             sa.Column("title_pending", sa.Boolean(), server_default=sa.false(), nullable=False)

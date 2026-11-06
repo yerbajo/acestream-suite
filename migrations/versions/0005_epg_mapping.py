@@ -15,8 +15,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # SET NULL, never CASCADE: a feed that drops a guide channel must leave the catalogue channel
-    # alive and unmapped ("sin guía"), because a channel is not worth deleting over a listing.
+    # SET NULL and never CASCADE: a feed that stops offering a guide channel must cost that channel
+    # its guide and nothing else. What is worth keeping is the catalogue channel, not the listing.
     with op.batch_alter_table("channel") as batch:
         batch.add_column(sa.Column("guide_channel_id", sa.Integer(), nullable=True))
         batch.create_index(
@@ -33,8 +33,9 @@ def upgrade() -> None:
         "epg_alias",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("channel_id", sa.Integer(), nullable=False),
-        # Nullable: the guide channel a person chose can vanish, and the decision row stays so the
-        # channel is still human-owned instead of falling back to the matcher.
+        # Nullable because the guide channel a person chose can disappear from its feed. The
+        # decision row stays anyway, so the channel keeps being human-owned instead of quietly
+        # going back to the matcher.
         sa.Column("epg_channel_id", sa.Integer(), nullable=True),
         sa.Column("created_by", sa.String(length=100), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
@@ -52,7 +53,7 @@ def upgrade() -> None:
             ondelete="SET NULL",
         ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_epg_alias")),
-        # One decision per catalogue channel: a second one replaces the first.
+        # One decision per catalogue channel: the second replaces the first.
         sa.UniqueConstraint("channel_id", name=op.f("uq_epg_alias_channel_id")),
     )
 

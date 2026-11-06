@@ -1,5 +1,6 @@
-{# Inline icons (Lucide-style strokes), sized by CSS and colored with currentColor.
-   Decorative: the button or link that holds one carries the accessible name. #}
+{# Trazos de Lucide incrustados: el tamaño lo pone el CSS y el color sale de currentColor. Son
+   decorativos a propósito —el nombre accesible lo lleva el botón o el enlace que los contiene—,
+   así que van con aria-hidden y fuera del orden de tabulación. #}
 {% macro icon(name) -%}
 <svg class="icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
 {%- if name == "play" %}<polygon points="6 3 20 12 6 21 6 3"/>
