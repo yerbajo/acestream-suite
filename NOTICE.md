@@ -1,26 +1,29 @@
 # Third-party notices
 
 acestream-suite is a web front end for an AceStream engine. It is distributed under the MIT license
-(`LICENSE`), which covers the work authored here. This file records what that work is built on, so
-that nobody has to guess.
+(`LICENSE`), which covers the code in this repository. This file records where that code came from,
+so that nobody has to guess.
 
 ## The application code
 
-The application started life as the **AceList** project — `https://github.com/fabiomb/AceList`,
-release **1.3.0** — and its source now lives in this repository, heavily changed: the guide (EPG)
-layer, the search page over the engine's index, the LAN deployment behaviour, the HLS bridge's
-companion jobs and the product's own name and logo are not in that project.
+The application began as the **AceList** project — `https://github.com/fabiomb/AceList`, release
+**1.3.0** — and that project publishes **no license**. To stop shipping code whose terms nobody
+granted, this project **rewrote the application**: every module, template and static file was written
+again — docstrings, comments, internal names, decomposition and strategy are ours — and the work is
+recorded, phase by phase, in `odd/tasks/acestream-suite-rewrite.md`.
 
-**AceList publishes no LICENSE.** Its repository grants no right to redistribute its source, and this
-note does not invent one:
+What that rewrite did **not** change, on purpose, because it is the contract with the data and with
+the programs around this one:
 
-- The code in `app/` and `migrations/` is derived from that unlicensed work. It is kept here because
-  this project grew out of it, not because a license was granted.
-- **If you redistribute this repository or an image built from it, that is a distribution of AceList's
-  source too.** Whether you may do that is a question for AceList's author, not for this file. The
-  safe reading is: ask first.
-- The owner of this repository (the account that publishes it) is the only one who should decide to
-  make it public, and should do so knowing the paragraph above.
+- the HTTP surface: same routes, parameters, status codes and redirects;
+- the database schema: same tables, columns, constraints and migrations;
+- the user-facing strings: the Spanish text on the screens and in the console;
+- the public names the rest of the code and the test suite call.
+
+**It is honest to call this a rewrite, not a clean-room reimplementation.** It was done with the
+original in view: the behaviour is modelled on that project and the file layout follows it. What is
+ours is the expression. If that distinction matters for how you intend to use this repository, that
+is the paragraph to weigh.
 
 ## The AceStream name and mark
 
@@ -40,6 +43,8 @@ exact URL is in `assets/README.md`.
 | `python:3.12-slim` (base image) | PSF-2.0 plus the Debian packages it ships |
 | `ffmpeg`, `curl`, `ca-certificates` (apt) | LGPL/GPL, depending on the build; Debian's packaging |
 | FastAPI, Uvicorn, SQLAlchemy, Alembic, httpx, Jinja2, pycountry, python-multipart | MIT / BSD / Apache-2.0, per each project |
+| htmx (`app/web/static/htmx.min.js`, vendored) | BSD-2-Clause |
+| The Lucide icon strokes in `app/web/templates/_icons.html` | ISC |
 | The Lato letterforms traced into `assets/logo.svg` | SIL Open Font License 1.1 |
 
 The engine itself is not part of this image: it runs elsewhere and is reached over HTTP.

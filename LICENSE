@@ -22,11 +22,11 @@ SOFTWARE.
 
 ---
 
-This license covers the work authored in this repository: the deployment files,
-the changes made to the application, the scripts under `scripts/`, the
-documentation and the logo.
+This license covers the work authored in this repository: the application code,
+the deployment files, the scripts under `scripts/`, the documentation and the
+logo.
 
-The application code is derived from the **AceList** project, which publishes no
-license of its own; that provenance, and what it means if you redistribute this
-repository or an image built from it, is in `NOTICE.md`. The AceStream name and
-mark belong to their owner.
+The application's behaviour was modelled on the **AceList** project, which
+publishes no license of its own. `NOTICE.md` records that provenance, what the
+rewrite changed and what it deliberately did not, and where the AceStream name
+and mark come from.
