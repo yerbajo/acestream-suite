@@ -1,9 +1,16 @@
+"""Deciding whether a stream is alive, by asking the engine about it for a while.
+
+The engine never answers "is this channel alive": it reports what it is doing right now, so
+aliveness is a judgement over several polls. This module makes that judgement in one place
+and says nothing about storing it — the check history does that.
+"""
+
 import asyncio
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from app.acestream.client import EngineClient, StreamSession
+from app.acestream.client import EngineClient, StreamSession, StreamStats
 from app.acestream.content_id import parse_content_id
 from app.acestream.errors import ContentNotFoundError, EngineError, EngineUnavailableError
 from app.db.models import CheckStatus
@@ -11,6 +18,8 @@ from app.db.models import CheckStatus
 
 @dataclass(frozen=True)
 class VerificationSettings:
+    """How patient a check is, and how much of a swarm it asks for."""
+
     min_peers: int = 1
     timeout: float = 20.0
     poll_interval: float = 2.0
@@ -18,14 +27,16 @@ class VerificationSettings:
     def __post_init__(self) -> None:
         if self.min_peers < 0:
             raise ValueError("min_peers must not be negative")
-        if self.timeout <= 0 or self.poll_interval <= 0:
+        if min(self.timeout, self.poll_interval) <= 0:
             raise ValueError("timeout and poll_interval must be positive")
 
 
 @dataclass(frozen=True)
 class VerificationResult:
+    """What one check concluded; the fields are what the history stores."""
+
     status: CheckStatus
-    # Highest peer count seen during the check; it fluctuates a lot between polls.
+    # The best peer count seen, not the last one: a swarm comes and goes during a check.
     peers: int | None = None
     speed_down: int | None = None
     infohash: str | None = None
@@ -40,33 +51,41 @@ def probe(
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
 ) -> VerificationResult:
-    """Polls an already started session; the caller owns it and must stop it.
+    """Polls a session the caller started and owns, and never stops it.
 
-    Alive means the engine reached `dl` with data downloaded and at least
-    `min_peers` peers: peers alone do not prove the stream delivers anything.
-    Engine errors propagate.
+    Only the engine's own downloading state counts: a stream in `prebuf`, or one with
+    peers but no bytes, has not delivered anything yet. The `sleep` and `clock` arguments
+    are what let a test spend the whole timeout without waiting for it.
     """
     settings = settings or VerificationSettings()
     deadline = clock() + settings.timeout
-    max_peers: int | None = None
+    peers: int | None = None
     while True:
         stats = client.stats(session)
         if stats.peers is not None:
-            max_peers = stats.peers if max_peers is None else max(max_peers, stats.peers)
-        if (
-            stats.status == "dl"
-            and (stats.downloaded or 0) > 0
-            and (stats.peers or 0) >= settings.min_peers
-        ):
-            return VerificationResult(
-                CheckStatus.ALIVE, max_peers, stats.speed_down, session.infohash
-            )
-        remaining = deadline - clock()
-        if remaining <= 0:
-            return VerificationResult(
-                CheckStatus.NO_PEERS, max_peers, stats.speed_down, session.infohash
-            )
-        sleep(min(settings.poll_interval, remaining))
+            peers = stats.peers if peers is None else max(peers, stats.peers)
+        if _delivers(stats, settings.min_peers):
+            return _result(CheckStatus.ALIVE, peers, stats, session)
+        left = deadline - clock()
+        if left <= 0:
+            return _result(CheckStatus.NO_PEERS, peers, stats, session)
+        sleep(min(settings.poll_interval, left))
+
+
+def _delivers(stats: StreamStats, min_peers: int) -> bool:
+    """Whether this poll is proof that the stream is coming down.
+
+    All three conditions are needed: the engine must have reached the downloading state,
+    must have received bytes, and must be backed by the peers the caller asked for.
+    """
+    return stats.status == "dl" and (stats.downloaded or 0) > 0 and (stats.peers or 0) >= min_peers
+
+
+def _result(
+    status: CheckStatus, peers: int | None, stats: StreamStats, session: StreamSession
+) -> VerificationResult:
+    """The verdict, with the measurements of the poll that produced it."""
+    return VerificationResult(status, peers, stats.speed_down, session.infohash)
 
 
 def verify(
@@ -78,14 +97,16 @@ def verify(
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
 ) -> VerificationResult:
-    """Starts a session, checks it and always stops it.
+    """Starts a session, probes it and stops it again, whatever happens.
 
-    A malformed Content ID raises `InvalidContentIdError`. Engine failures are
-    returned as `ERROR` so a caller can store them; the session is stopped either way.
-    An engine that cannot be reached raises `EngineUnavailableError` instead: that says
-    nothing about the channel, so it must not be stored as the channel's result.
-    `on_alive` runs while the session is still playing, which is the only moment a
-    screenshot can be taken; exceptions it raises propagate.
+    An unusable Content ID is refused before the engine is asked. A stream the engine does
+    not know is `NOT_FOUND`; a failure while polling is `ERROR` with the engine's own
+    message, because that is what the user has to be told. An engine that cannot be
+    reached is raised instead: it says nothing about the channel, so storing it as the
+    channel's outcome would be a lie that survives the restart of the engine.
+
+    `on_alive` runs while the session is still playing — the only moment a frame can be
+    captured from it. What it raises is not swallowed: the caller's failure is the report.
     """
     settings = settings or VerificationSettings()
     content_id = parse_content_id(content_id)
@@ -109,5 +130,5 @@ async def verify_async(
     settings: VerificationSettings | None = None,
     **kwargs,
 ) -> VerificationResult:
-    """Runs `verify` in a worker thread so the event loop keeps serving requests."""
+    """`verify` for a request handler: the polling waits in a thread, not in the event loop."""
     return await asyncio.to_thread(verify, client, content_id, settings, **kwargs)
