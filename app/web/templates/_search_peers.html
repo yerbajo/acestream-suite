@@ -1,6 +1,9 @@
+{# The peer count of one search hit. It arrives in its own request, so a slow or missing engine holds
+   up nothing but this line; a failure is a hint, never a red banner. #}
 {% if error %}
 <span class="hint">{{ error }}</span>
 {% else %}
-<strong>{{ result.peers if result.peers is not none else "—" }}</strong> pares
+{% set peers = result.peers if result.peers is not none else "—" %}
+<strong>{{ peers }}</strong> pares
 <span class="hint">{{ status_labels[result.status] }} ahora</span>
 {% endif %}

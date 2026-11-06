@@ -1,3 +1,11 @@
+/* acestream-suite — one stylesheet, ordered by component.
+   Section order matters twice: the theme first (everything reads its custom properties), and the
+   generic pieces before the ones that refine them (a status pill before a gallery tile, the shared
+   control box before the monospaced one). */
+
+/* ── Theme ─────────────────────────────────────────────────────────────────────────────────────
+   The palette is the whole theme: no rule below hard-codes a colour it could take from here.
+   Dark mode is the same set of names with different values, so both modes stay in one place. */
 :root {
   color-scheme: light dark;
   --bg: #f6f7f9;
@@ -37,6 +45,9 @@
   }
 }
 
+/* ── Page base ────────────────────────────────────────────────────────────────────────────────
+   Sizes are inherited by whatever has no opinion of its own, and the type is the machine's own:
+   this app has no webfont and no reason to download one. */
 * { box-sizing: border-box; }
 
 body {
@@ -47,7 +58,30 @@ body {
 }
 
 a { color: var(--accent); }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+/* An abbreviation's title is the translation, so it must be hoverable and never underlined. */
+abbr { text-decoration: none; cursor: help; }
+h1 { font-size: 22px; margin: 0 0 16px; }
+h2 { font-size: 18px; margin: 32px 0 12px; }
 
+/* Gone from the screen, still read out: the label a table head has no room to print. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.content {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+/* ── Top bar ──────────────────────────────────────────────────────────────────────────────────
+   The brand on the left, the sections beside it, the engine's state pushed to the far right. */
 .topbar {
   display: flex;
   align-items: center;
@@ -67,97 +101,70 @@ a { color: var(--accent); }
   text-decoration: none;
 }
 
-/* El logotipo manda el tamaño y ya trae el nombre dibujado: 38 px de alto mantienen legible la
-   placa del arte en 3D (relación 6,6:1) sin empujar la cabecera. */
+/* The wordmark brings the name drawn inside it; 38px keeps the 3D plaque legible (its art is 6.6:1)
+   without pushing the bar taller. */
 .topbar .brand-logo { height: 38px; width: auto; display: block; }
 
 .topbar nav { display: flex; gap: 16px; }
 .topbar nav a { text-decoration: none; }
 
-.content {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 24px;
-}
-
-h1 { font-size: 22px; margin: 0 0 16px; }
-
-.table-wrap {
-  overflow-x: auto;
-  background: var(--surface);
+/* ── Engine indicator ─────────────────────────────────────────────────────────────────────────
+   A pill that is never in the way: a dot for the state, the version when there is one, and the
+   reason plus the one action that fixes it when the engine is off. */
+.engine-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 3px 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-/* The whole table is one point smaller than the page: eleven facts per row have to read at a
-   glance without a horizontal scroll, and 13px keeps the secondary cells (category, language,
-   peers, dates) compact while the title stays at 14px as the row's anchor. */
-table.channels { width: 100%; border-collapse: collapse; font-size: 13px; }
-
-.channels th,
-.channels td {
-  padding: 6px 8px;
-  text-align: left;
-  vertical-align: middle;
-  border-bottom: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
   white-space: nowrap;
 }
 
-.channels th {
+.engine-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--none-fg); }
+.engine-status.up .engine-dot { background: var(--alive-fg); }
+.engine-status.down { color: var(--bad-fg); border-color: var(--bad-fg); }
+.engine-status.down .engine-dot { background: var(--bad-fg); }
+.engine-error { color: var(--bad-fg); font-size: 12px; white-space: normal; max-width: 260px; }
+
+.engine-start {
+  padding: 1px 10px;
+  border: 1px solid var(--bad-fg);
+  border-radius: 999px;
+  background: none;
+  color: var(--bad-fg);
+  font: inherit;
   font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
+  cursor: pointer;
 }
 
-.channels tbody tr:last-child td { border-bottom: none; }
-.channels .num { text-align: right; font-variant-numeric: tabular-nums; }
-.channels .title { white-space: normal; font-weight: 500; min-width: 160px; }
+.engine-start:hover { background: var(--bad-bg); }
+.engine-start .when-busy { display: none; }
+.engine-start.htmx-request .when-idle { display: none; }
+.engine-start.htmx-request .when-busy { display: inline; }
+.engine-start:disabled { cursor: progress; }
 
-/* The channel's own screenshot rides in the title cell at thumbnail size: one whole column saved
-   for a fact that stays visible. The name sits beside it and wraps, so the column never grows to
-   the width of its longest title. */
-.channels .title-main { display: flex; align-items: center; gap: 8px; }
-.channels .title-main a { min-width: 0; font-size: 14px; }
-
-.channels .thumb-mini,
-.channels .no-thumb {
-  flex: none;
-  display: block;
-  width: 64px;
-  height: 36px;
-  border-radius: 4px;
-  object-fit: cover;
-  background: var(--none-bg);
+/* ── Page furniture ───────────────────────────────────────────────────────────────────────────
+   Title and actions on one line, the path back above them, and the box a screen shows when it has
+   nothing to list. */
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
-/* The detail page's history table is a different, wider table: its capture column keeps 96x54. */
-.thumb img {
-  display: block;
-  width: 96px;
-  height: 54px;
-  border-radius: 4px;
-  object-fit: cover;
-  background: var(--none-bg);
-}
+.page-head h1 { margin: 0; }
+.page-head .actions { margin: 0; flex-wrap: wrap; }
+.page-head form { display: flex; align-items: center; gap: 8px; }
 
-code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
-abbr { text-decoration: none; cursor: help; }
-
-.status {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.status-alive { background: var(--alive-bg); color: var(--alive-fg); }
-.status-no_peers { background: var(--warn-bg); color: var(--warn-fg); }
-.status-not_found,
-.status-error { background: var(--bad-bg); color: var(--bad-fg); }
-.status-unchecked { background: var(--none-bg); color: var(--none-fg); }
+.breadcrumb { margin: 0 0 8px; }
+.breadcrumb a { text-decoration: none; }
 
 .empty-state {
   padding: 48px 24px;
@@ -170,25 +177,17 @@ abbr { text-decoration: none; cursor: help; }
 
 .empty-state .empty-title { font-size: 17px; color: var(--text); margin-top: 0; }
 
-.page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
+.card {
+  max-width: 720px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
-.page-head h1 { margin: 0; }
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
-
+/* ── Buttons ──────────────────────────────────────────────────────────────────────────────────
+   One base for every clickable box, then the three moods: primary, destructive, and the quiet icon
+   button that only says its name to a screen reader or a tooltip. */
 .button {
   display: inline-block;
   padding: 7px 14px;
@@ -204,126 +203,10 @@ abbr { text-decoration: none; cursor: help; }
 
 .button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .button.danger { background: var(--bad-fg); border-color: var(--bad-fg); color: var(--on-accent); }
+.button.danger-outline { color: var(--bad-fg); }
 .button:disabled { opacity: 0.6; cursor: progress; }
 
-.row-actions { text-align: right; }
-.danger-link { color: var(--bad-fg); }
-
-.card {
-  max-width: 720px;
-  padding: 24px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; flex: 1; }
-.field-row { display: flex; gap: 16px; flex-wrap: wrap; }
-.field-row .field { min-width: 220px; }
-.field label { font-weight: 600; font-size: 14px; }
-
-.field input,
-.field select {
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-}
-
-.field [aria-invalid="true"] { border-color: var(--bad-fg); }
-.field-error { margin: 0; color: var(--bad-fg); font-size: 13px; }
-.hint { margin: 0; color: var(--muted); font-size: 13px; }
-/* The guide's time range is the smallest thing in the table and the only thing below the event
-   name; 11px is enough to read "08:00-08:56" and keeps the column from being the widest one. */
-.channels .guide-cell .hint { font-size: 11px; }
-
-.form-error {
-  max-width: 720px;
-  padding: 10px 14px;
-  border-radius: 6px;
-  background: var(--bad-bg);
-  color: var(--bad-fg);
-}
-
-.actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
-.busy { display: none; color: var(--muted); }
-form.htmx-request .busy { display: inline; }
-
-.filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px;
-  padding: 16px;
-  margin-bottom: 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.filters .field { margin: 0; flex: 0 1 180px; }
-.filters .field-search { flex: 1 1 240px; }
-.filter-actions { display: flex; align-items: center; gap: 12px; }
-.result-count { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
-
-.channels th a.sort { color: inherit; text-decoration: none; }
-.channels th a.sort:hover,
-.channels th a.sort.active { color: var(--text); }
-
-h2 { font-size: 18px; margin: 32px 0 12px; }
-.breadcrumb { margin: 0 0 8px; }
-.breadcrumb a { text-decoration: none; }
-.page-head .actions { margin: 0; flex-wrap: wrap; }
-.page-head form { display: flex; align-items: center; gap: 8px; }
-.button.danger-outline { color: var(--bad-fg); }
-
-.detail {
-  display: grid;
-  grid-template-columns: minmax(0, 480px) minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
-}
-
-@media (max-width: 800px) {
-  .detail { grid-template-columns: 1fr; }
-}
-
-.capture { margin: 0; }
-.capture img,
-.no-capture {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border-radius: 8px;
-  background: var(--none-bg);
-}
-
-.no-capture { display: grid; place-items: center; color: var(--muted); }
-.capture figcaption { margin-top: 6px; color: var(--muted); font-size: 13px; }
-
-.facts {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 8px 16px;
-  margin: 0;
-  padding: 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.facts dt { color: var(--muted); font-size: 13px; font-weight: 600; }
-.facts dd { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-code.wrap { word-break: break-all; }
-.history .message { white-space: normal; color: var(--muted); font-size: 13px; }
-.channels .title a { color: var(--text); text-decoration: none; }
-.channels .title a:hover { color: var(--accent); }
-
-form.inline { display: inline; }
-
+/* A button that looks like a link, for closing something that is only a report. */
 .link-button {
   margin-left: 12px;
   padding: 0;
@@ -335,61 +218,6 @@ form.inline { display: inline; }
 }
 
 .link-button:disabled { opacity: 0.6; cursor: progress; }
-
-.notice {
-  margin: 0 0 16px;
-  padding: 10px 14px;
-  border-radius: 6px;
-}
-
-.notice-ok { background: var(--alive-bg); color: var(--alive-fg); }
-.notice-error { background: var(--bad-bg); color: var(--bad-fg); }
-
-.settings fieldset {
-  margin: 0 0 20px;
-  padding: 0 0 4px;
-  border: none;
-  border-bottom: 1px solid var(--border);
-}
-
-.settings fieldset:last-of-type { border-bottom: none; }
-.settings legend { padding: 0; margin-bottom: 12px; font-weight: 700; font-size: 16px; }
-.settings fieldset .actions { margin: 0 0 16px; }
-
-.list-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-.list-bar .result-count { margin: 0; }
-
-.batch {
-  margin: 0 0 16px;
-  padding: 12px 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 4px solid var(--accent);
-  border-radius: 6px;
-}
-
-.batch.finished { border-left-color: var(--alive-fg); }
-.batch-line { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.batch-line .link-button { margin-left: auto; }
-.batch progress { flex: 1; min-width: 160px; max-width: 400px; accent-color: var(--accent); }
-.batch-counts { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; }
-.batch-counts:empty { display: none; }
-
-.field textarea {
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font: 13px/1.5 ui-monospace, Consolas, monospace;
-  resize: vertical;
-}
-
-.import-summary { margin-bottom: 16px; }
-.import-summary h2 { margin-top: 0; }
-.import-summary h3 { font-size: 15px; margin: 16px 0 6px; }
-.import-list { margin: 0; padding-left: 20px; }
-.import-list li { margin: 2px 0; }
 
 .icon { display: block; }
 
@@ -412,13 +240,8 @@ form.inline { display: inline; }
 .icon-button.danger:hover,
 .icon-button.danger:focus-visible { color: var(--bad-fg); }
 .icon-button:disabled { opacity: 0.6; cursor: progress; }
-.row-actions { white-space: nowrap; }
-.row-actions .icon-button { margin-left: 2px; }
-/* The row's three action buttons are the last thing the width budget needs: 28px keeps each one a
-   comfortable target (a 28x28 grid) while returning 12px per row over the 32px default. */
-.channels .row-actions .icon-button { width: 28px; height: 28px; margin-left: 1px; }
 
-.hash { white-space: nowrap; }
+/* The small variants come after `.icon-button`, because they win on source order and nothing else. */
 .copy-button { width: 26px; height: 26px; margin-left: 4px; }
 .copy-button .icon { width: 15px; height: 15px; }
 .copy-button .when-copied { display: none; }
@@ -426,8 +249,190 @@ form.inline { display: inline; }
 .copy-button.copied .when-idle { display: none; }
 .copy-button.copied .when-copied { display: block; }
 
+.recheck-button { width: 26px; height: 26px; margin-left: 4px; }
+.recheck-button .icon { width: 15px; height: 15px; }
+
+/* A label that replaces the button's while the request it started is in flight. */
+.busy { display: none; color: var(--muted); }
+form.htmx-request .busy { display: inline; }
+
+form.inline { display: inline; }
+
+/* The row's three actions share the right edge; 28px keeps each one a comfortable target while
+   returning 12px per row over the default 32px. */
+.row-actions { text-align: right; white-space: nowrap; }
+.row-actions .icon-button { margin-left: 2px; }
+.channels .row-actions .icon-button { width: 28px; height: 28px; margin-left: 1px; }
+
+/* ── Forms ────────────────────────────────────────────────────────────────────────────────────
+   A field is a stacked label, control, error and hint. The box every control shares lives here. */
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; flex: 1; }
+.field-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.field-row .field { min-width: 220px; }
+.field label { font-weight: 600; font-size: 14px; }
+
+.field input,
+.field select,
+.field textarea,
+.guide-search,
+.guide-pick select {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.field input,
+.field select,
+.guide-search,
+.guide-pick select { font: inherit; }
+
+/* Pasted links are code, and the box only grows downwards. */
+.field textarea {
+  font: 13px/1.5 ui-monospace, Consolas, monospace;
+  resize: vertical;
+}
+
+.field [aria-invalid="true"] { border-color: var(--bad-fg); }
+.field-error { margin: 0; color: var(--bad-fg); font-size: 13px; }
+.hint { margin: 0; color: var(--muted); font-size: 13px; }
+
+.form-error {
+  max-width: 720px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+}
+
+.actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+
+/* ── Filters and the list bar ────────────────────────────────────────────────────────────────
+   The filters are one row that wraps: the text search takes the room the selects leave. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.filters .field { margin: 0; flex: 0 1 180px; }
+.filters .field-search { flex: 1 1 240px; }
+.filter-actions { display: flex; align-items: center; gap: 12px; }
+
+.result-count { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+
+.list-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.list-bar .result-count { margin: 0; }
 .list-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* ── The catalogue table ─────────────────────────────────────────────────────────────────────
+   One point smaller than the page: eleven facts per row have to read at a glance without a
+   horizontal scroll, so the secondary cells stay at 13px and the title carries the row at 14px. */
+.table-wrap {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+table.channels { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+.channels th,
+.channels td {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.channels th {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.channels tbody tr:last-child td { border-bottom: none; }
+.channels .num { text-align: right; font-variant-numeric: tabular-nums; }
+.channels .title { white-space: normal; font-weight: 500; min-width: 160px; }
+.channels .title a { color: var(--text); text-decoration: none; }
+.channels .title a:hover { color: var(--accent); }
+
+/* A provisional name is the stream's own, not the user's: muted and slanted says so. */
+.channels .title a.pending-title { color: var(--muted); font-style: italic; }
+
+/* The screenshot rides inside the title cell at thumbnail size: one column saved, the fact still
+   visible, and the name beside it wraps instead of stretching the column to its longest title. */
+.channels .title-main { display: flex; align-items: center; gap: 8px; }
+.channels .title-main a { min-width: 0; font-size: 14px; }
+
+.channels .thumb-mini,
+.channels .no-thumb {
+  flex: none;
+  display: block;
+  width: 64px;
+  height: 36px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--none-bg);
+}
+
+/* The detail page's history table is the wide one: its screenshots keep 96x54. */
+.thumb img {
+  display: block;
+  width: 96px;
+  height: 54px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--none-bg);
+}
+
+/* A column head that sorts says so, and only the column in charge gets the arrow. */
+.channels th a.sort { color: inherit; text-decoration: none; }
+.channels th a.sort:hover,
+.channels th a.sort.active { color: var(--text); }
+
+/* The hash is a 6+4 prefix with the full value in the code's `title` and in the copy button beside
+   it, so nothing is hidden; one point smaller keeps it from being the widest column. */
+.hash { white-space: nowrap; }
+.channels .hash code { font-size: 12px; }
+
+.status-cell { white-space: nowrap; }
+
+/* Only what is on right now, and the two blanks that are not the same blank. What comes next lives
+   in the grid this cell links to, and the guide's own name is not repeated: the row is already that
+   channel's entry in the catalogue. */
+.channels .guide-cell { white-space: normal; min-width: 118px; vertical-align: top; }
+.channels .guide-cell .hint { display: block; font-size: 11px; }
+.guide-now { font-weight: 600; }
+
+/* ── State pills ─────────────────────────────────────────────────────────────────────────────
+   One shape, four colours, everywhere a state is reported: the catalogue, a channel's history and
+   the batch summary. */
+.status {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.status-alive { background: var(--alive-bg); color: var(--alive-fg); }
+.status-no_peers { background: var(--warn-bg); color: var(--warn-fg); }
+.status-not_found,
+.status-error { background: var(--bad-bg); color: var(--bad-fg); }
+.status-unchecked { background: var(--none-bg); color: var(--none-fg); }
+
+/* A resolution is a fact, not a state: boxed, never coloured. */
 .resolution {
   display: inline-block;
   padding: 1px 6px;
@@ -438,15 +443,55 @@ form.inline { display: inline; }
   font-variant-numeric: tabular-nums;
 }
 
-.channels .title a.pending-title { color: var(--muted); font-style: italic; }
+/* ── Channel detail ──────────────────────────────────────────────────────────────────────────
+   The capture on the left, the facts on the right, one column when there is no room for two. */
+.detail {
+  display: grid;
+  grid-template-columns: minmax(0, 480px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
 
-/* View switch: list / gallery */
-.view-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-.view-switch a { padding: 6px 12px; color: var(--muted); text-decoration: none; font-weight: 500; }
-.view-switch a + a { border-left: 1px solid var(--border); }
-.view-switch a[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
+@media (max-width: 800px) {
+  .detail { grid-template-columns: 1fr; }
+}
 
-/* Gallery: Netflix-like rows of tiles, one per category */
+.capture { margin: 0; }
+.capture img,
+.no-capture {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--none-bg);
+}
+
+/* An empty capture keeps the same box, so the page does not jump when the first one arrives. */
+.no-capture { display: grid; place-items: center; color: var(--muted); }
+.capture figcaption { margin-top: 6px; color: var(--muted); font-size: 13px; }
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.facts dt { color: var(--muted); font-size: 13px; font-weight: 600; }
+.facts dd { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+code.wrap { word-break: break-all; }
+
+/* ── History table ───────────────────────────────────────────────────────────────────────────
+   Only the error column is prose, so only it is allowed to wrap. */
+.history .message { white-space: normal; color: var(--muted); font-size: 13px; }
+
+/* ── Gallery ─────────────────────────────────────────────────────────────────────────────────
+   One row per category, tiles that grow a little under the cursor, and the state on the artwork. */
 .gallery-section { margin: 24px 0 8px; }
 .gallery-section h2 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; }
 .section-count { color: var(--muted); font-size: 13px; font-weight: 500; }
@@ -478,6 +523,7 @@ form.inline { display: inline; }
   z-index: 1;
 }
 
+/* Motion is decoration here: without it the tile still highlights and the button still appears. */
 @media (prefers-reduced-motion: reduce) {
   .tile-media { transition: none; }
   .tile:hover .tile-media,
@@ -489,6 +535,7 @@ form.inline { display: inline; }
 .tile-placeholder { display: block; width: 100%; height: 100%; }
 .tile-link img { object-fit: cover; }
 
+/* Before a screenshot exists, the title's first two letters stand in for it. */
 .tile-placeholder {
   display: grid;
   place-items: center;
@@ -526,12 +573,14 @@ form.inline { display: inline; }
   transition: opacity 0.15s ease;
 }
 
+/* The triangle is a stroked outline by default; filled it reads as a player button. */
 .play-button .icon { fill: currentColor; margin-left: 2px; }
 .tile:hover .play-button,
 .tile:focus-within .play-button,
 .play-button:focus-visible { opacity: 1; }
 .play-button:disabled { cursor: progress; }
 
+/* Without hover there is nothing to reveal it: the button is always there on a touch screen. */
 @media (hover: none) {
   .play-button { opacity: 1; }
 }
@@ -563,77 +612,79 @@ form.inline { display: inline; }
 }
 
 .tag-resolution { color: var(--text); font-weight: 700; }
+
+/* ── View switch ─────────────────────────────────────────────────────────────────────────────
+   List and gallery are the same screen twice, so the switch names both and marks the one in use. */
+.view-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.view-switch a { padding: 6px 12px; color: var(--muted); text-decoration: none; font-weight: 500; }
+.view-switch a + a { border-left: 1px solid var(--border); }
+.view-switch a[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
+
+/* ── Batch status ────────────────────────────────────────────────────────────────────────────
+   A banner over the list while the background checks run, and a shorter one that reports how they
+   ended. The left border is the state: accent while running, red when the engine dropped. */
+.batch {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+}
+
+.batch.finished { border-left-color: var(--alive-fg); }
 .batch.aborted { border-left-color: var(--bad-fg); }
 .batch.aborted .hint { margin-top: 6px; }
+.batch-line { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.batch-line .link-button { margin-left: auto; }
+.batch progress { flex: 1; min-width: 160px; max-width: 400px; accent-color: var(--accent); }
+.batch-counts { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; }
+.batch-counts:empty { display: none; }
 
-/* Ace Stream indicator */
-.engine-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  padding: 3px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 13px;
-  white-space: nowrap;
+/* ── Notices ─────────────────────────────────────────────────────────────────────────────────
+   The answer to an in-page action, in the two voices it has: it worked, or it did not. */
+.notice {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 6px;
 }
 
-.engine-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--none-fg); }
-.engine-status.up .engine-dot { background: var(--alive-fg); }
-.engine-status.down { color: var(--bad-fg); border-color: var(--bad-fg); }
-.engine-status.down .engine-dot { background: var(--bad-fg); }
+.notice-ok { background: var(--alive-bg); color: var(--alive-fg); }
+.notice-error { background: var(--bad-bg); color: var(--bad-fg); }
 
-.engine-error { color: var(--bad-fg); font-size: 12px; white-space: normal; max-width: 260px; }
+/* ── Import ──────────────────────────────────────────────────────────────────────────────────
+   The summary of a finished import: what was created, what was already there and what could not be
+   read. Each is a plain list under its own heading. */
+.import-summary { margin-bottom: 16px; }
+.import-summary h2 { margin-top: 0; }
+.import-summary h3 { font-size: 15px; margin: 16px 0 6px; }
+.import-list { margin: 0; padding-left: 20px; }
+.import-list li { margin: 2px 0; }
 
-.engine-start {
-  padding: 1px 10px;
-  border: 1px solid var(--bad-fg);
-  border-radius: 999px;
-  background: none;
-  color: var(--bad-fg);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
+/* ── Settings ────────────────────────────────────────────────────────────────────────────────
+   Each group of settings is a fieldset with a bottom rule; the last one has none, the form's own
+   actions are the end of the page. */
+.settings fieldset {
+  margin: 0 0 20px;
+  padding: 0 0 4px;
+  border: none;
+  border-bottom: 1px solid var(--border);
 }
 
-.engine-start:hover { background: var(--bad-bg); }
-.engine-start .when-busy { display: none; }
-.engine-start.htmx-request .when-idle { display: none; }
-.engine-start.htmx-request .when-busy { display: inline; }
-.engine-start:disabled { cursor: progress; }
+.settings fieldset:last-of-type { border-bottom: none; }
+.settings legend { padding: 0; margin-bottom: 12px; font-weight: 700; font-size: 16px; }
+.settings fieldset .actions { margin: 0 0 16px; }
 
-/* Per-channel check next to the status badge */
-.status-cell { white-space: nowrap; }
-.recheck-button { width: 26px; height: 26px; margin-left: 4px; }
-.recheck-button .icon { width: 15px; height: 15px; }
-
-/* Guide: now/next cells on the catalogue list */
-.channels .guide-cell { white-space: normal; min-width: 118px; vertical-align: top; }
-.channels .guide-cell .hint { display: block; }
-/* Only the programme on now; the next one lives in the grid this cell links to, so there is nothing
-   to style for it here. */
-.guide-now { font-weight: 600; }
-/* The mapped guide's name is not shown on the list: the row is already that channel's catalogue
-   entry, so repeating the guide's name beside the event said nothing new. The name is a decision,
-   and it is read on the mapping screen where the decision is made. */
-/* The hash is a 6+4 hex prefix and a copy button; the full value stays in the code's `title` and
-   in the copy button, so the fact is never hidden. One point smaller keeps the column from being
-   the widest one after the merge. Country and language already render the 2-letter code inside an
-   `abbr`, and the resolution badge its shortest label. */
-.channels .hash code { font-size: 12px; }
-
-/* Guide: one channel's next 24 h */
+/* ── Guide grid: one channel's next 24 hours ─────────────────────────────────────────────────
+   The hour is tabular and stays on top; the synopsis is prose in its own column. */
 .channels.guide .guide-hour { white-space: nowrap; font-variant-numeric: tabular-nums; vertical-align: top; }
-/* The description is prose, not a label. `white-space: nowrap` comes from `.channels td`, which is
-   right for a title, a hash or a status and wrong here: a synopsis on one line is either clipped by
-   the table wrap or drags the whole table wider. It wraps, it reads at 46ch, and it is the only
-   cell in this table allowed to grow tall — aligned to the top like the hour so a two-line synopsis
-   does not float in the middle of a taller row. `pre-line` and not `normal` because a source that
-   ships its synopsis in two paragraphs means it, and a real line break is the one case where the
-   text already says where it should wrap. */
+.channels.guide .title { vertical-align: top; }
+
+/* `nowrap` comes from `.channels td`, which is right for a title or a hash and wrong here: a
+   synopsis on one line is either clipped by the table wrap or drags the whole table wider. It wraps,
+   it reads at 46ch, and it is the only cell allowed to grow tall — aligned to the top like the hour,
+   so a two-line synopsis does not float in the middle of a taller row. `pre-line` and not `normal`
+   because a source that ships its synopsis in paragraphs means it. */
 .channels.guide .message {
   white-space: pre-line;
   vertical-align: top;
@@ -643,8 +694,9 @@ form.inline { display: inline; }
   color: var(--muted);
   font-size: 13px;
 }
-.channels.guide .title { vertical-align: top; }
+
 .channels.guide tr.grid-current { background: var(--alive-bg); }
+
 .badge-now {
   display: inline-block;
   margin-right: 6px;
@@ -657,7 +709,8 @@ form.inline { display: inline; }
   text-transform: uppercase;
 }
 
-/* Mapping screen */
+/* ── Mapping screen ──────────────────────────────────────────────────────────────────────────
+   One catalogue channel per item, its candidates as buttons, and the search for the rest. */
 .mapping-list { margin: 0 0 24px; padding: 0; list-style: none; display: grid; gap: 12px; }
 .mapping-item {
   padding: 12px 16px;
@@ -679,22 +732,13 @@ form.inline { display: inline; }
 .candidate .button { padding: 2px 9px; font-size: 12px; }
 .candidate-leftover { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .guide-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.guide-search,
-.guide-pick select {
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-}
 .guide-search { flex: 1 1 220px; min-width: 180px; }
 .guide-pick select { max-width: 320px; }
 .pagination { display: flex; align-items: center; gap: 12px; margin: 0 0 24px; }
 
-/* La caja de «añadir» de la búsqueda. `settings fieldset` está scoped a esa página, así que la
-   búsqueda necesita el mismo trato aquí: una superficie propia, separada de la tabla por espacio,
-   con el título como leyenda y la acción dentro. */
+/* ── Search ──────────────────────────────────────────────────────────────────────────────────
+   The search has no fieldset of its own, so its "add" box needs the same treatment the settings
+   groups get: its own surface, separated from the table, the title as its legend. */
 .search-add {
   margin: 16px 0 0;
   padding: 16px;
@@ -708,6 +752,6 @@ form.inline { display: inline; }
 .search-add .actions { margin: 0; flex-wrap: wrap; }
 .search-add .actions .hint { flex: 1 1 240px; }
 
-/* La respuesta de «Reproducir» cae debajo del botón, sin descolocar la fila mientras llega. */
+/* The answer to a row's play button lands under it, without moving the row while it arrives. */
 .play-slot:empty { display: none; }
 .play-slot:not(:empty) { margin-top: 6px; font-size: 12px; }

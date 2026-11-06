@@ -1,0 +1,18 @@
+{# Blocks the channel screens share. Imported `with context`, because `url_for` reads the request
+   from there; `status_labels` is a template global and would arrive either way. #}
+
+{# One pill for a channel's state. `check` is its latest check or None, and a check that failed can
+   carry its reason as a tooltip where the caller asks for it. #}
+{% macro status_pill(check, with_reason=false) -%}
+{%- if check %}<span class="status status-{{ check.status.value }}"{% if with_reason and check.error_message %} title="{{ check.error_message }}"{% endif %}>{{ status_labels[check.status] }}</span>
+{%- else %}<span class="status status-unchecked">Sin verificar</span>
+{%- endif -%}
+{%- endmacro %}
+
+{# Opens the channel in the player and parks the answer in the page's notices. The button belongs to
+   the caller, so each screen keeps its own look while the request stays in one place. #}
+{% macro play_form(channel, css_class="inline") -%}
+<form{% if css_class %} class="{{ css_class }}"{% endif %} method="post" action="{{ url_for('channel_play', channel_id=channel.id) }}"
+      hx-post="{{ url_for('channel_play', channel_id=channel.id) }}" hx-target="#notices" hx-swap="innerHTML"
+      hx-disabled-elt="find button">{{ caller() }}</form>
+{%- endmacro %}

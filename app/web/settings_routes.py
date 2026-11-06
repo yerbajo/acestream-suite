@@ -1,3 +1,14 @@
+"""The settings screen: what the app is pointed at, and two buttons that prove it.
+
+Saving is one POST of every field, and each field is refused with its own sentence when it makes no
+sense — an address without a scheme, a timeout of zero, a path that is not on this disk. All of them
+at once, since the page shows all of them at once.
+
+Two values cannot be judged by reading them: whether the engine answers at that address, and
+whether the searcher does. Each gets a button that tries what is typed and saves none of it, because
+the point of the button is to find out before committing.
+"""
+
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -17,6 +28,18 @@ router = APIRouter(prefix="/settings")
 
 FormField = Annotated[str, Form()]
 
+# What the searcher is asked when somebody wants to know whether it works: short, and with results
+# in any sports index. A failure should mean the searcher is down, not that the query was obscure.
+_PROBE_QUERY = "dazn"
+
+# What each test button needs before it can try anything. A timeout of "abc" makes both tests
+# meaningless; a URL without a scheme makes one of them. The order is the reporting order.
+_ENGINE_FIELDS = ("engine_url", "engine_timeout")
+_SEARCH_FIELDS = ("search_url", "engine_timeout")
+
+# What a probe waits when the typed timeout cannot be read as a number.
+_FALLBACK_TIMEOUT = 15.0
+
 
 def _posted_form(
     engine_url: FormField = "",
@@ -30,6 +53,7 @@ def _posted_form(
     ffmpeg_path: FormField = "",
     acestream_path: FormField = "",
 ) -> SettingsForm:
+    """The ten boxes of the page, turned into the form object the template and the checks share."""
     return SettingsForm(
         engine_url,
         engine_timeout,
@@ -44,11 +68,15 @@ def _posted_form(
     )
 
 
-PostedForm = Annotated[SettingsForm, Depends(_posted_form)]
+TypedForm = Annotated[SettingsForm, Depends(_posted_form)]
 
 
 def detect_paths() -> dict[str, str | None]:
-    """What autodetection finds, ignoring saved settings and environment variables."""
+    """What autodetection finds, ignoring what is saved and every environment variable.
+
+    Only a suggestion: the page shows these beside the boxes, and the button copies them into the
+    empty ones. Nothing here writes anything.
+    """
     return {
         "vlc_path": player.find_vlc(None),
         "ffmpeg_path": screenshots.find_ffmpeg(None),
@@ -56,7 +84,8 @@ def detect_paths() -> dict[str, str | None]:
     }
 
 
-def _render(request: Request, form: SettingsForm, *, notice: str | None = None) -> HTMLResponse:
+def _page(request: Request, form: SettingsForm, *, notice: str | None = None) -> HTMLResponse:
+    """The page with the form as it stands, and what this machine has to offer for it."""
     return templates.TemplateResponse(
         request,
         "settings.html",
@@ -68,83 +97,99 @@ def _render(request: Request, form: SettingsForm, *, notice: str | None = None) 
 
 @router.get("", response_class=HTMLResponse, name="settings")
 def settings_page(request: Request, settings: SettingsDep, saved: bool = False):
-    notice = "Ajustes guardados." if saved else None
-    return _render(request, SettingsForm.from_settings(settings), notice=notice)
+    """The settings as saved, with a word of confirmation when the redirect says one is due."""
+    return _page(
+        request,
+        SettingsForm.from_settings(settings),
+        notice="Ajustes guardados." if saved else None,
+    )
 
 
 @router.post("", response_class=HTMLResponse, name="settings_save")
-def settings_save(request: Request, session: SessionDep, form: PostedForm):
+def settings_save(request: Request, session: SessionDep, form: TypedForm):
+    """Store the form, or show it again with every complaint about it."""
     settings = form.validate()
     if settings is None:
-        return _render(request, form)
+        return _page(request, form)
     save_settings(session, settings)
-    # 303 turns the POST into a GET, so reloading the page never resubmits the form.
+    # 303 turns the POST into a GET that says it was saved, so reloading never saves twice.
     url = request.url_for("settings").include_query_params(saved="true")
     return RedirectResponse(url, status_code=303)
 
 
 @router.post("/detect", response_class=HTMLResponse, name="settings_detect")
-def settings_detect(request: Request, form: PostedForm):
-    """Fills the empty path fields with what is found; nothing is saved yet."""
-    found = []
-    for name, path in detect_paths().items():
-        if path and not getattr(form, name).strip():
-            setattr(form, name, path)
-            found.append(name)
-    if found:
-        notice = "Rutas detectadas. Revisa y pulsa «Guardar» para aplicarlas."
-    else:
-        notice = "No se detectaron rutas nuevas."
-    response = _render(request, form, notice=notice)
-    # Keeps /settings in the address bar: reloading /settings/detect would be a GET it lacks.
+def settings_detect(request: Request, form: TypedForm):
+    """Copy what was found into the empty path boxes; save nothing, so nothing changes yet."""
+    detected = detect_paths()
+    # Only the empty boxes: a path somebody typed is a decision, not a gap to fill.
+    filled = [name for name, path in detected.items() if path and not getattr(form, name).strip()]
+    for name in filled:
+        setattr(form, name, detected[name])
+    notice = (
+        "Rutas detectadas. Revisa y pulsa «Guardar» para aplicarlas."
+        if filled
+        else "No se detectaron rutas nuevas."
+    )
+    response = _page(request, form, notice=notice)
+    # Keeps /settings in the address bar: reloading it is a GET, and this page is a POST.
     response.headers["HX-Push-Url"] = str(request.url_for("settings"))
     return response
 
 
-# La consulta con la que se prueba el buscador: corta, y con resultados en cualquier índice deportivo.
-TEST_SEARCH_QUERY = "dazn"
+def _first_problem(form: SettingsForm, fields: tuple[str, ...]) -> str | None:
+    """The first reason a test cannot go ahead, taken from the verdicts `validate` just reached."""
+    return next((form.errors[name] for name in fields if form.errors.get(name)), None)
+
+
+def _seconds(raw: str) -> float:
+    """A timeout typed by hand, in seconds; a box left empty or unreadable gets the fallback."""
+    try:
+        return float(raw.strip().replace(",", "."))
+    except ValueError:
+        return _FALLBACK_TIMEOUT
+
+
+def _search_base(form: SettingsForm) -> str:
+    """Where the searcher lives: its own address, or the engine's, which serves it as well."""
+    return form.search_url.strip().rstrip("/") or form.engine_url.strip().rstrip("/")
 
 
 @router.post("/test-search", response_class=HTMLResponse, name="settings_test_search")
-def settings_test_search(request: Request, form: PostedForm):
-    """Tries the searcher as typed, before saving it: one real query and what it answered.
+def settings_test_search(request: Request, form: TypedForm):
+    """Ask the searcher one real question, as typed, before any of it is saved.
 
-    The search is a different service from the engine (`/search.m3u`), so an engine that answers
-    `get_version` proves nothing here: this asks the searcher itself.
+    The search is a service of its own (`/search.m3u`), so an engine that answers its version has
+    proved nothing here: the thing being configured is the searcher, and the searcher is what this
+    asks.
     """
     form.validate()
-    problem = form.errors.get("search_url") or form.errors.get("engine_timeout")
-    base = (form.search_url.strip().rstrip("/") or form.engine_url.strip().rstrip("/"))
+    problem = _first_problem(form, _SEARCH_FIELDS)
+    base = _search_base(form)
     hits = None
     if problem is None:
         try:
-            timeout = float(form.engine_timeout.strip().replace(",", ".") or 15)
-        except ValueError:
-            timeout = 15.0
-        try:
-            with SearchClient(base, timeout=timeout) as client:
-                hits = client.search(TEST_SEARCH_QUERY, limit=5)
+            with SearchClient(base, timeout=_seconds(form.engine_timeout)) as client:
+                hits = client.search(_PROBE_QUERY, limit=5)
         except SearchError as exc:
             problem = f"La búsqueda no responde: {exc}"
     return templates.TemplateResponse(
         request,
         "_search_test.html",
-        {"hits": hits, "problem": problem, "query": TEST_SEARCH_QUERY, "base": base},
+        {"hits": hits, "problem": problem, "query": _PROBE_QUERY, "base": base},
         status_code=503 if problem else 200,
     )
 
 
 @router.post("/test-engine", response_class=HTMLResponse, name="settings_test_engine")
-def settings_test_engine(request: Request, form: PostedForm):
-    """Tries the engine URL and timeout as typed, before saving them."""
+def settings_test_engine(request: Request, form: TypedForm):
+    """Ask the engine at the typed address for its version, before any of it is saved."""
     form.validate()
-    problem = form.errors.get("engine_url") or form.errors.get("engine_timeout")
+    problem = _first_problem(form, _ENGINE_FIELDS)
     version = None
     if problem is None:
         url = form.engine_url.strip().rstrip("/")
-        timeout = float(form.engine_timeout.strip().replace(",", "."))
         try:
-            with EngineClient(url, timeout=timeout) as client:
+            with EngineClient(url, timeout=_seconds(form.engine_timeout)) as client:
                 version = client.version()
         except EngineError as exc:
             problem = f"El engine no responde en {url}: {exc}"

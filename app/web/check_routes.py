@@ -1,5 +1,13 @@
+"""Checks asked for from a page: what runs them, where the page goes, and how it watches them.
+
+A check costs the engine seconds, so no page waits for one. A POST queues the work and answers with
+a redirect; the run it started is shared state, and every page draws the progress bar for it from
+that one object. The page that started a run is also the page that reloads when it ends, which it
+learns by polling with the batch id it is showing.
+"""
+
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.acestream.errors import EngineUnavailableError
@@ -12,6 +20,7 @@ from app.web.deps import (
     CheckRunnerDep,
     EngineFactory,
     EngineFactoryDep,
+    EngineProbe,
     EngineProbeDep,
     SessionDep,
     SessionFactoryDep,
@@ -23,17 +32,27 @@ from app.web.templating import templates
 
 router = APIRouter(prefix="/checks")
 
-ENGINE_UNAVAILABLE = "engine_unavailable"  # why a batch stopped early
+# Why a batch stopped early. It is not one channel's fault, so it never becomes the stored status of
+# the channels that did not get their turn.
+ENGINE_UNAVAILABLE = "engine_unavailable"
 
 
-def check_work(
+def _background_check(
     session_factory: sessionmaker[Session],
     engine_factory: EngineFactory,
     settings: AppSettings,
     *,
     screenshots: Screenshots = Screenshots.NEVER,
 ) -> CheckWork:
-    """One background check: its own session and engine client, as it runs in another thread."""
+    """One channel's check, prepared for a thread that is not the request's.
+
+    Nothing of the request comes along: its session and its engine client belong to the request and
+    are closed with it, so each check opens its own pair and closes them again.
+
+    An engine that cannot be reached calls the whole run off instead of returning a status. Every
+    remaining channel would fail for that same reason and none of them is to blame, so filing
+    "error" against each one would be a lie that outlives the outage.
+    """
 
     def work(channel_id: int) -> CheckStatus:
         with session_factory() as session, engine_factory() as client:
@@ -47,7 +66,6 @@ def check_work(
                     screenshots=screenshots,
                 )
             except EngineUnavailableError as exc:
-                # Every other channel would fail the same way, and none of them is to blame.
                 raise AbortBatch(ENGINE_UNAVAILABLE) from exc
             return check.status
 
@@ -63,26 +81,51 @@ def start_checks(
     *,
     screenshots: Screenshots = Screenshots.NEVER,
 ) -> None:
-    work = check_work(session_factory, engine_factory, settings, screenshots=screenshots)
+    """Queue those channels with the app's runner, at the concurrency the settings ask for."""
+    work = _background_check(session_factory, engine_factory, settings, screenshots=screenshots)
     runner.submit(channel_ids, work, max_workers=settings.check_concurrency)
 
 
-def _check_listed(
-    request, session, session_factory, engine_factory, probe, settings, runner, force
-):
+def _back_to(request: Request) -> RedirectResponse:
+    """The view these checks were asked from, with its filters, as a GET.
+
+    `view=gallery` is how the gallery's own buttons say where they are; it picks the page and says
+    nothing about which channels were selected, so it is read once and dropped from the URL.
+    """
     params = dict(request.query_params)
-    # Back to the view the checks were started from, with the same filters.
     view = "channel_gallery" if params.pop("view", None) == "gallery" else "channel_list"
-    url = request.url_for(view).include_query_params(**params)
-    # 303 turns the POST into a GET, so reloading the list never starts the checks again.
-    response = RedirectResponse(url, status_code=303)
+    # 303 turns the POST into a GET, so reloading the list never queues the batch again.
+    return RedirectResponse(request.url_for(view).include_query_params(**params), status_code=303)
+
+
+def _queue_list(
+    request: Request,
+    session: Session,
+    *,
+    probe: EngineProbe,
+    runner: CheckRunner,
+    session_factory: sessionmaker[Session],
+    engine_factory: EngineFactory,
+    settings: AppSettings,
+    force_screenshots: bool,
+) -> Response:
+    """Queue every channel the URL selects, then show the page that asked.
+
+    With the engine off nothing is queued and the page says why. A batch that cannot run would fill
+    the list with failures, and a list of dead channels is exactly what the person would believe.
+    """
+    response = _back_to(request)
     if probe() is None:
-        # Every check would fail on the engine, not on the channels.
         return flash(response, ENGINE_DOWN)
-    query = parse_query(request.query_params)
-    ids = [channel.id for channel, _ in listing.search_channels(session, query)]
-    mode = Screenshots.ALWAYS if force else Screenshots.NEVER
-    start_checks(runner, ids, session_factory, engine_factory, settings, screenshots=mode)
+    selected = listing.search_channels(session, parse_query(request.query_params))
+    start_checks(
+        runner,
+        [channel.id for channel, _ in selected],
+        session_factory,
+        engine_factory,
+        settings,
+        screenshots=Screenshots.ALWAYS if force_screenshots else Screenshots.NEVER,
+    )
     return response
 
 
@@ -96,9 +139,16 @@ def checks_start(
     settings: SettingsDep,
     runner: CheckRunnerDep,
 ):
-    """Checks every channel the list shows with the filters in the query string."""
-    return _check_listed(
-        request, session, session_factory, engine_factory, probe, settings, runner, force=False
+    """Check every channel the list is showing."""
+    return _queue_list(
+        request,
+        session,
+        probe=probe,
+        runner=runner,
+        session_factory=session_factory,
+        engine_factory=engine_factory,
+        settings=settings,
+        force_screenshots=False,
     )
 
 
@@ -112,28 +162,39 @@ def checks_screenshots(
     settings: SettingsDep,
     runner: CheckRunnerDep,
 ):
-    """Like `checks_start`, but every live channel gets a new screenshot."""
-    return _check_listed(
-        request, session, session_factory, engine_factory, probe, settings, runner, force=True
+    """The same batch, with a fresh picture of every channel that turns out to be alive."""
+    return _queue_list(
+        request,
+        session,
+        probe=probe,
+        runner=runner,
+        session_factory=session_factory,
+        engine_factory=engine_factory,
+        settings=settings,
+        force_screenshots=True,
+    )
+
+
+def _panel(request: Request, batch, watch: str) -> HTMLResponse:
+    """The progress fragment. `watch` is the batch whose end reloads the page, or "" for none."""
+    return templates.TemplateResponse(
+        request, "_batch_status.html", {"batch": batch, "watch": watch}
     )
 
 
 @router.get("/status", response_class=HTMLResponse, name="checks_status")
 def checks_status(request: Request, runner: CheckRunnerDep, watching: str = ""):
-    """The progress panel, polled while a batch runs."""
+    """The fragment every page polls while a batch runs."""
     batch = runner.current()
-    response = templates.TemplateResponse(
-        request, "_batch_status.html", {"batch": batch, "watch": watching}
-    )
+    response = _panel(request, batch, watching)
     if batch is not None and batch.finished and batch.id == watching:
-        # The page that watched the batch shows stale states: reload it once.
+        # The page that watched this run is showing states from before it: have it reload once.
         response.headers["HX-Refresh"] = "true"
     return response
 
 
 @router.post("/dismiss", response_class=HTMLResponse, name="checks_dismiss")
 def checks_dismiss(request: Request, runner: CheckRunnerDep):
+    """Take a finished run off the screens."""
     runner.dismiss()
-    return templates.TemplateResponse(
-        request, "_batch_status.html", {"batch": runner.current(), "watch": ""}
-    )
+    return _panel(request, runner.current(), "")

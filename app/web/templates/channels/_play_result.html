@@ -1,3 +1,5 @@
+{# The answer to a play request: one notice. Handed to VLC there is nothing to copy, so the ready
+   notice with its link is the other case. #}
 {% if error %}
 <p class="notice notice-error" role="alert">{{ error }}</p>
 {% elif not playback_url %}

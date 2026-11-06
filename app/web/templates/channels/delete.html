@@ -5,6 +5,8 @@
 {% block content %}
 <h1>Borrar canal</h1>
 
+{# Confirmation before the fact, and the only place the loss is spelled out: the channel's history
+   and its screenshots go with it. #}
 <form class="card form" method="post" action="{{ url_for('channel_destroy', channel_id=channel.id) }}">
   <p>¿Seguro que quieres borrar <strong>{{ channel.title }}</strong> (<code>{{ channel.content_id }}</code>)?</p>
   <p class="hint">

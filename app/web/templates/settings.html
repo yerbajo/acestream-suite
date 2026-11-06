@@ -2,33 +2,62 @@
 
 {% block title %}Ajustes · acestream-suite{% endblock %}
 
-{% macro field_error(name) %}
-  {% if form.errors[name] %}<p class="field-error" id="{{ name }}-error">{{ form.errors[name] }}</p>{% endif %}
-{% endmacro %}
+{% macro error_text(name) -%}
+{%- if form.errors[name] %}<p class="field-error" id="{{ name }}-error">{{ form.errors[name] }}</p>{% endif -%}
+{%- endmacro %}
 
-{% macro invalid(name) %}{% if form.errors[name] %} aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}{% endmacro %}
+{% macro invalid_state(name) -%}
+{%- if form.errors[name] %} aria-invalid="true" aria-describedby="{{ name }}-error"{% endif -%}
+{%- endmacro %}
 
-{% macro number(name, label, hint) %}
-  <div class="field">
-    <label for="{{ name }}">{{ label }}</label>
-    <input id="{{ name }}" name="{{ name }}" type="text" inputmode="decimal" required value="{{ form[name] }}"{{ invalid(name) }}>
-    {{ field_error(name) }}
-    <p class="hint">{{ hint }}</p>
-  </div>
-{% endmacro %}
+{# One labelled field. The caller draws the control, its error and its hint, in that order. #}
+{% macro field(name, label) -%}
+<div class="field">
+  <label for="{{ name }}">{{ label }}</label>
+  {{ caller() }}
+</div>
+{%- endmacro %}
 
-{% macro path(name, label, hint) %}
-  <div class="field">
-    <label for="{{ name }}">{{ label }}</label>
-    <input id="{{ name }}" name="{{ name }}" type="text" spellcheck="false" value="{{ form[name] }}"
-           placeholder="{{ detected[name] or 'Sin detectar' }}"{{ invalid(name) }}>
-    {{ field_error(name) }}
-    <p class="hint">
-      {{ hint }}
-      {% if detected[name] %}Detectado: <code class="wrap">{{ detected[name] }}</code>{% else %}No se detectó en las rutas habituales.{% endif %}
-    </p>
-  </div>
-{% endmacro %}
+{# A group of settings. The legend is the only heading each group gets, so it carries the name. #}
+{% macro section(title) -%}
+<fieldset>
+  <legend>{{ title }}</legend>
+  {{ caller() }}
+</fieldset>
+{%- endmacro %}
+
+{# A number typed into a text box on purpose: the values are seconds and counts, not a browser
+   spinner's idea of them, and a decimal point must survive a locale that expects a comma. #}
+{% macro number_field(name, label, hint) -%}
+{% call field(name, label) %}
+<input id="{{ name }}" name="{{ name }}" type="text" inputmode="decimal" required value="{{ form[name] }}"{{ invalid_state(name) }}>
+{{ error_text(name) }}
+<p class="hint">{{ hint }}</p>
+{% endcall %}
+{%- endmacro %}
+
+{# A program's path. Empty means "find it yourself", so the placeholder says what was detected and
+   the hint repeats it in full for copying. #}
+{% macro path_field(name, label, hint) -%}
+{% call field(name, label) %}
+<input id="{{ name }}" name="{{ name }}" type="text" spellcheck="false" value="{{ form[name] }}"
+       placeholder="{{ detected[name] or 'Sin detectar' }}"{{ invalid_state(name) }}>
+{{ error_text(name) }}
+<p class="hint">
+  {{ hint }}
+  {% if detected[name] %}Detectado: <code class="wrap">{{ detected[name] }}</code>{% else %}No se detectó en las rutas habituales.{% endif %}
+</p>
+{% endcall %}
+{%- endmacro %}
+
+{# A probe that answers in the page's notices and never saves anything: the form's own submit is
+   what saves, and `formnovalidate` keeps a half-filled form from blocking the test. #}
+{% macro probe(endpoint, label) -%}
+<div class="actions">
+  <button type="submit" class="button" formnovalidate
+          hx-post="{{ url_for(endpoint) }}" hx-target="#notices" hx-swap="innerHTML">{{ label }}</button>
+</div>
+{%- endmacro %}
 
 {% block content %}
 <h1>Ajustes</h1>
@@ -38,57 +67,45 @@
 
 <form class="card form settings" method="post" action="{{ url_for('settings_save') }}"
       hx-disabled-elt="find button">
-  <fieldset>
-    <legend>Engine de Ace Stream</legend>
-    <div class="field">
-      <label for="engine_url">URL del engine</label>
-      <input id="engine_url" name="engine_url" type="url" required spellcheck="false" value="{{ form.engine_url }}"{{ invalid("engine_url") }}>
-      {{ field_error("engine_url") }}
-      <p class="hint">Normalmente <code>http://127.0.0.1:6878</code>.</p>
-    </div>
-    <div class="field-row">
-      {{ number("engine_timeout", "Timeout de cada petición (s)", "Cuánto esperar una respuesta del engine.") }}
-    </div>
-    <div class="actions">
-      <button type="submit" class="button" formnovalidate
-              hx-post="{{ url_for('settings_test_engine') }}" hx-target="#notices" hx-swap="innerHTML">Probar conexión</button>
-    </div>
-  </fieldset>
+  {% call section("Engine de Ace Stream") %}
+  {% call field("engine_url", "URL del engine") %}
+  <input id="engine_url" name="engine_url" type="url" required spellcheck="false" value="{{ form.engine_url }}"{{ invalid_state("engine_url") }}>
+  {{ error_text("engine_url") }}
+  <p class="hint">Normalmente <code>http://127.0.0.1:6878</code>.</p>
+  {% endcall %}
+  <div class="field-row">
+    {{ number_field("engine_timeout", "Timeout de cada petición (s)", "Cuánto esperar una respuesta del engine.") }}
+  </div>
+  {{ probe("settings_test_engine", "Probar conexión") }}
+  {% endcall %}
 
-  <fieldset>
-    <legend>Búsqueda (acesearch)</legend>
-    <div class="field">
-      <label for="search_url">URL de la búsqueda</label>
-      <input id="search_url" name="search_url" type="url" spellcheck="false" value="{{ form.search_url }}"{{ invalid("search_url") }}>
-      {{ field_error("search_url") }}
-      <p class="hint">Vacío usa la del engine, que es donde vive el buscador (<code>/search.m3u</code>).</p>
-    </div>
-    <div class="actions">
-      <button type="submit" class="button" formnovalidate
-              hx-post="{{ url_for('settings_test_search') }}" hx-target="#notices" hx-swap="innerHTML">Probar búsqueda</button>
-    </div>
-  </fieldset>
+  {% call section("Búsqueda (acesearch)") %}
+  {% call field("search_url", "URL de la búsqueda") %}
+  <input id="search_url" name="search_url" type="url" spellcheck="false" value="{{ form.search_url }}"{{ invalid_state("search_url") }}>
+  {{ error_text("search_url") }}
+  <p class="hint">Vacío usa la del engine, que es donde vive el buscador (<code>/search.m3u</code>).</p>
+  {% endcall %}
+  {{ probe("settings_test_search", "Probar búsqueda") }}
+  {% endcall %}
 
-  <fieldset>
-    <legend>Verificación</legend>
-    <div class="field-row">
-      {{ number("min_peers", "Peers mínimos", "Un canal está activo con al menos estos peers.") }}
-      {{ number("check_timeout", "Timeout de verificación (s)", "Tiempo máximo para que un canal empiece a recibir datos.") }}
-      {{ number("screenshot_timeout", "Timeout de captura (s)", "Tiempo máximo de ffmpeg para sacar un fotograma.") }}
-      {{ number("check_concurrency", "Verificaciones simultáneas", "Canales que se verifican a la vez en segundo plano (1 a 8).") }}
-    </div>
-  </fieldset>
+  {% call section("Verificación") %}
+  <div class="field-row">
+    {{ number_field("min_peers", "Peers mínimos", "Un canal está activo con al menos estos peers.") }}
+    {{ number_field("check_timeout", "Timeout de verificación (s)", "Tiempo máximo para que un canal empiece a recibir datos.") }}
+    {{ number_field("screenshot_timeout", "Timeout de captura (s)", "Tiempo máximo de ffmpeg para sacar un fotograma.") }}
+    {{ number_field("check_concurrency", "Verificaciones simultáneas", "Canales que se verifican a la vez en segundo plano (1 a 8).") }}
+  </div>
+  {% endcall %}
 
-  <fieldset>
-    <legend>Programas</legend>
-    <p class="hint">Deja una ruta vacía para detectarla automáticamente.</p>
-    {{ path("vlc_path", "VLC", "Se usa para reproducir los canales.") }}
-    {{ path("ffmpeg_path", "ffmpeg", "Se usa para las capturas.") }}
-    {{ path("acestream_path", "Engine de Ace Stream", "Se usa en «Iniciar» cuando Ace Stream está apagado.") }}
-    <div class="actions">
-      <button type="submit" class="button" formnovalidate formaction="{{ url_for('settings_detect') }}">Autodetectar rutas</button>
-    </div>
-  </fieldset>
+  {% call section("Programas") %}
+  <p class="hint">Deja una ruta vacía para detectarla automáticamente.</p>
+  {{ path_field("vlc_path", "VLC", "Se usa para reproducir los canales.") }}
+  {{ path_field("ffmpeg_path", "ffmpeg", "Se usa para las capturas.") }}
+  {{ path_field("acestream_path", "Engine de Ace Stream", "Se usa en «Iniciar» cuando Ace Stream está apagado.") }}
+  <div class="actions">
+    <button type="submit" class="button" formnovalidate formaction="{{ url_for('settings_detect') }}">Autodetectar rutas</button>
+  </div>
+  {% endcall %}
 
   <div class="actions">
     <button type="submit" class="button primary">Guardar</button>

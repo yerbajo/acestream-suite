@@ -3,43 +3,55 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  {# 422 is a rejected form and 503 a missing player or engine: htmx must show them. #}
+  {# htmx throws away any answer outside 2xx unless it is listed here. A rejected form (422) and a
+     missing player or engine (503) are answers the user has to read, so they swap; the rest of the
+     4xx/5xx range stays an error and leaves the page alone. #}
   <meta name="htmx-config" content='{"responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "422", "swap": true}, {"code": "503", "swap": true}, {"code": "[45]..", "swap": false, "error": true}]}'>
   <title>{% block title %}acestream-suite{% endblock %}</title>
+  {# Every asset is fetched from our own server and stamped with its content hash, so a cached
+     stylesheet can never outlive an edit. #}
   <link rel="icon" type="image/svg+xml" href="{{ static_url(request, 'logo-mark.svg') }}">
   <link rel="icon" href="{{ static_url(request, 'favicon.ico') }}" sizes="any">
   <link rel="stylesheet" href="{{ static_url(request, 'style.css') }}">
   <script src="{{ static_url(request, 'htmx.min.js') }}" defer></script>
   <script src="{{ static_url(request, 'app.js') }}" defer></script>
 </head>
+{% set main_nav = [
+  ("channel_list", "Canales"),
+  ("channel_gallery", "Galería"),
+  ("epg_mapping", "Guía"),
+  ("import_page", "Importar"),
+  ("search_page", "Buscar"),
+  ("settings", "Ajustes"),
+] %}
 <body hx-boost="true">
   <header class="topbar">
-    {# El logotipo lleva el nombre dentro, así que el `alt` es el nombre: nada de texto duplicado. #}
+    {# The wordmark has the name drawn inside it, so its `alt` is the name and there is no second
+       copy of the text beside it. #}
     <a class="brand" href="{{ url_for('channel_list') }}">
       <img class="brand-logo" src="{{ static_url(request, 'logo-wordmark.png') }}"
            alt="acestream-suite" width="640" height="103">
     </a>
     <nav>
-      <a href="{{ url_for('channel_list') }}">Canales</a>
-      <a href="{{ url_for('channel_gallery') }}">Galería</a>
-      <a href="{{ url_for('epg_mapping') }}">Guía</a>
-      <a href="{{ url_for('import_page') }}">Importar</a>
-      <a href="{{ url_for('search_page') }}">Buscar</a>
-      <a href="{{ url_for('settings') }}">Ajustes</a>
+      {%- for endpoint, label in main_nav %}
+      <a href="{{ url_for(endpoint) }}">{{ label }}</a>
+      {%- endfor %}
     </nav>
     {% include "_engine_status.html" %}
   </header>
   <main class="content">
-    {# Results of in-page actions, such as opening a channel in VLC. #}
+    {# Answers that never redraw the page, such as opening a channel in VLC. #}
     <div id="notices" aria-live="polite"></div>
     {% set flashed = flash_message(request) %}
     {% if flashed %}<p class="notice notice-error" role="alert">{{ flashed }}</p>{% endif %}
+    {# The screen reader's channel for whatever the page announces without changing visibly. #}
     <div id="announcer" class="visually-hidden" aria-live="polite"></div>
-    {# A page that must not reload when checks end sets `reload_on_checks = false`. #}
-    {% with batch = request.app.state.check_runner.current() %}
+    {# One poller for the whole page. A page that must not reload when the checks end — the import
+       summary would be lost — sets `reload_on_checks = false`; then `watch` stays empty and the
+       batch status only reports. #}
+    {% set batch = request.app.state.check_runner.current() %}
     {% with watch = batch.id if batch and reload_on_checks is not false else "" %}
     {% include "_batch_status.html" %}
-    {% endwith %}
     {% endwith %}
     {% block content %}{% endblock %}
   </main>

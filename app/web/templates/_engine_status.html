@@ -1,17 +1,20 @@
-{# Ace Stream indicator in the top bar. Loaded and refreshed by htmx, so a slow or absent
-   engine never delays a page. Before the first poll nothing is known; after it,
-   `engine_version` is None when the engine is off. #}
-{% set checked = engine_checked is defined %}
-<div id="engine-status" class="engine-status{% if checked %}{{ ' up' if engine_version else ' down' }}{% endif %}"
-     hx-get="{{ url_for('engine_status') }}" hx-trigger="{{ 'every 30s' if checked else 'load, every 30s' }}" hx-swap="outerHTML"
-     role="status"{% if checked %} title="Engine en {{ engine_url }}"{% endif %}>
+{# The engine's state in the top bar, always fetched by htmx so a slow or absent engine never holds
+   a page: before the first answer nothing is known, and after it an `engine_version` of None means
+   the engine is off. #}
+{% set answered = engine_checked is defined %}
+{% set state = ("up" if engine_version else "down") if answered else "" %}
+<div id="engine-status" class="engine-status{% if state %} {{ state }}{% endif %}" role="status"
+     hx-get="{{ url_for('engine_status') }}" hx-swap="outerHTML"
+     hx-trigger="{{ 'every 30s' if answered else 'load, every 30s' }}"
+     {% if answered %}title="Engine en {{ engine_url }}"{% endif %}>
   <span class="engine-dot" aria-hidden="true"></span>
-  {% if not checked %}
+  {% if not answered %}
   <span>Ace Stream…</span>
   {% elif engine_version %}
   <span>Ace Stream {{ engine_version.version }}</span>
   {% else %}
   <span>Ace Stream apagado</span>
+  {# Why it is down, and the one action that can fix it from the browser. #}
   {% if engine_error %}<span class="engine-error">{{ engine_error }}</span>{% endif %}
   {% if engine_can_start %}
   <button type="button" class="engine-start" hx-post="{{ url_for('engine_start') }}"
