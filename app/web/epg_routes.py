@@ -1,17 +1,17 @@
-"""The EPG screens and the two published artefacts: the day grid, the mapping screen, the XMLTV
-and the JSON mapping.
+"""The guide's screens and its two published documents.
 
-`app/web/routes.py` keeps the catalogue; this module is the guide on top of it. Nothing here
-imports `app.web.check_routes`, and no page queues a check: the guide is a read of stored listings,
-and the duplicate must never put a second queue on the `.28` engine (the reason `app/cli.py` exists
-at all). The mapping screen's writes touch `epg_alias` and `channel.guide_channel_id` and nothing
-else.
+The catalogue's pages live in `app/web/routes.py`; what is here is the guide on top of them: one
+channel's day grid, the mapping screen, and the XMLTV and JSON that a player and the playlist
+builder fetch. Nothing in this module imports `app.web.check_routes` and no page queues a check: the
+guide is a read of stored listings, and putting a second queue on the `.28` engine is the exact
+mistake `app/cli.py` exists to avoid. The only writes here are the mapping screen's two, and they
+touch `epg_alias` and `channel.guide_channel_id` and nothing else.
 
-Two empty states are normal and neither is an error: a catalogue channel with no guide, and a guide
-that has not been refreshed yet. Both answer 200 with a sentence in Spanish, because a dead or
+Two empty states are ordinary and neither is an error: a catalogue channel with no guide, and a
+guide that has not been refreshed yet. Both answer 200 with a sentence in Spanish, because a dead or
 half-loaded feed must not take the catalogue down with it.
 
-`/epg.xml` and `/epg.json` are read-only and computed from the store on every request; a player
+`/epg.xml` and `/epg.json` are read-only and rebuilt from the store on every request. A player
 fetches the first on its own schedule and the playlist builder reads the second, so neither is
 cached and neither can go stale.
 """
@@ -35,37 +35,52 @@ router = APIRouter()
 
 FormField = Annotated[str, Form()]
 
-# Unmapped channels per page. The matcher scores every one of them against every guide name, so
-# this is the number that keeps one page's rendering bounded.
+# Unmapped channels per page. The matcher scores every one of them against every guide name, so this
+# number is what bounds one page's rendering.
 PER_PAGE = 25
 
-# Guide names offered at once by the search box. Hundreds of names cannot go into one select.
+# Guide names the picker offers at once. Hundreds of them cannot go into one select.
 GUIDES_SHOWN = 50
 
-
-def _redirect(request: Request, name: str, **path_params) -> RedirectResponse:
-    # 303 turns the POST into a GET, so reloading the page never resubmits the form.
-    return RedirectResponse(request.url_for(name, **path_params), status_code=303)
+# How many proposals one unmapped row shows: enough to choose from, few enough to stay readable.
+PROPOSALS = 3
 
 
-def _channel_or_404(session: Session, channel_id: int):
+def _back_to_mapping(request: Request) -> RedirectResponse:
+    """Send the browser back to the mapping screen as a GET, so a reload resubmits nothing."""
+    return RedirectResponse(request.url_for("epg_mapping"), status_code=303)
+
+
+def _existing_channel(session: Session, channel_id: int):
+    """The catalogue channel, or a 404 for the page that asked for it."""
     try:
         return get_channel(session, channel_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail="Canal no encontrado") from exc
 
 
+def _page_number(asked: int) -> int:
+    """The page to render: the first one for anything a URL may carry below it."""
+    return max(asked, 1)
+
+
+def _page_count(unmapped_total: int) -> int:
+    """How many pages of unmapped channels there are, one even when there are none."""
+    return max(1, (unmapped_total + PER_PAGE - 1) // PER_PAGE)
+
+
 @router.get("/channels/{channel_id}/guide", response_class=HTMLResponse, name="channel_guide")
 def channel_guide(request: Request, session: SessionDep, channel_id: int):
-    """One channel's next 24 h in Madrid time, with what is on now marked.
+    """One channel's next 24 h in Madrid time, with whatever is on now marked.
 
-    A channel with no guide and a guide with nothing in the window both answer 200 with the same
-    title and a different reason line: they look alike and they are not the same thing to fix.
+    A channel with no guide and a guide with nothing inside the window both answer 200 with the same
+    title and a different reason line: the two look alike on screen and are not the same thing to
+    fix.
     """
-    channel = _channel_or_404(session, channel_id)
+    channel = _existing_channel(session, channel_id)
     now = datetime.now(UTC)
-    guide = channel.guide_channel_id is not None
-    rows = epg_guide.day_grid(session, channel.guide_channel_id, now=now) if guide else []
+    guide_id = channel.guide_channel_id
+    rows = epg_guide.day_grid(session, guide_id, now=now) if guide_id is not None else []
     return templates.TemplateResponse(
         request,
         "channels/guide.html",
@@ -75,16 +90,15 @@ def channel_guide(request: Request, session: SessionDep, channel_id: int):
 
 @router.get("/epg/mapping", response_class=HTMLResponse, name="epg_mapping")
 def epg_mapping(request: Request, session: SessionDep, page: int = 1):
-    """Unmapped catalogue channels with the matcher's rejected candidates, and the manual fixes.
+    """The unmapped channels with the proposals the matcher rejected, and the manual decisions.
 
-    Paginated because the matcher's own report is bounded: each unmapped row scores every guide
-    name it holds.
+    Paginated because the matcher's report is bounded by design: every unmapped row on the page
+    scores each guide name the store holds.
     """
-    page = max(page, 1)
+    page = _page_number(page)
     mapping = epg_matching.report(
-        session, limit=PER_PAGE, candidates=3, offset=(page - 1) * PER_PAGE
+        session, limit=PER_PAGE, candidates=PROPOSALS, offset=(page - 1) * PER_PAGE
     )
-    total_pages = max(1, (mapping.unmapped_total + PER_PAGE - 1) // PER_PAGE)
     return templates.TemplateResponse(
         request,
         "epg/mapping.html",
@@ -92,16 +106,16 @@ def epg_mapping(request: Request, session: SessionDep, page: int = 1):
             "mapping": mapping,
             "decisions": epg_matching.manual_decisions(session),
             "page": page,
-            "total_pages": total_pages,
+            "total_pages": _page_count(mapping.unmapped_total),
         },
     )
 
 
 @router.get("/epg/mapping/guides", response_class=HTMLResponse, name="epg_mapping_guides")
 def epg_mapping_guides(request: Request, session: SessionDep, q: str = ""):
-    """The `<option>`s for one row's guide picker, narrowed by the search box.
+    """The `<option>`s for one row's picker, narrowed by the search box.
 
-    A partial, not a page: htmx swaps it into the row's own `<select>`.
+    A partial and not a page: htmx swaps it into the row's own `<select>`.
     """
     guides = epg_matching.search_guides(session, q, limit=GUIDES_SHOWN)
     return templates.TemplateResponse(
@@ -113,41 +127,44 @@ def epg_mapping_guides(request: Request, session: SessionDep, q: str = ""):
 def epg_mapping_set(
     request: Request, session: SessionDep, channel_id: int, guide_id: FormField = ""
 ):
-    """Stores one manual decision: it points at `guide_id` and `--auto` will leave it alone."""
+    """Store one manual decision: the channel points at `guide_id` and `--auto` leaves it alone.
+
+    A submitted picker with nothing chosen carries an empty value, which is not a decision to store.
+    """
     if not guide_id.isdigit():
-        return _redirect(request, "epg_mapping")
+        return _back_to_mapping(request)
     try:
         epg_matching.set_alias(session, channel_id, int(guide_id))
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail="Canal o guía no encontrados") from exc
-    return _redirect(request, "epg_mapping")
+    return _back_to_mapping(request)
 
 
 @router.post("/epg/mapping/{channel_id}/clear", name="epg_mapping_clear")
 def epg_mapping_clear(request: Request, session: SessionDep, channel_id: int):
-    """Undoes the decision and leaves the channel unmapped, where the matcher may propose again."""
+    """Undo the decision and leave the channel unmapped, where the matcher may propose again."""
     try:
         epg_matching.clear_alias(session, channel_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail="Canal no encontrado") from exc
-    return _redirect(request, "epg_mapping")
+    return _back_to_mapping(request)
 
 
 @router.get("/epg.xml", name="epg_xml")
 def epg_xml(session: SessionDep):
-    """The mapped guide as XMLTV, the document the playlist's `url-tvg` points at.
+    """The mapped guide as XMLTV, the document a playlist's `url-tvg` points at.
 
-    Read-only and built from the store on every request: it is a few hundred programmes, a player
-    fetches it on its own schedule, and there is no cache here to go stale.
+    Built from the store on every request: it is a few hundred programmes, a player fetches it on
+    its own schedule, and there is no cache here that could go stale.
     """
     return Response(epg_output.build_xmltv(session), media_type="application/xml; charset=utf-8")
 
 
 @router.get("/epg.json", name="epg_json")
 def epg_json(session: SessionDep):
-    """`content_id -> guide id -> display name` for the mapped channels only.
+    """`content_id -> guide id -> display name`, for the mapped channels and no others.
 
-    The mapping the playlist builder needs and the XMLTV does not carry. Unmapped channels are
-    absent, exactly as they are in the XMLTV.
+    This is the link to the catalogue that the XMLTV cannot carry; an unmapped channel is absent
+    here exactly as it is absent there.
     """
     return JSONResponse(epg_output.build_mapping(session))

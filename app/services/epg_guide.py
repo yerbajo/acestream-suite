@@ -1,12 +1,12 @@
-"""Reading the stored guide: what is on now and what follows, and one channel's next day.
+"""Reading the stored guide: what is on a channel now, what follows, and its next day.
 
-`app/services/epg.py` fetches and stores the feed and `epg_matching.py` decides which catalogue
-channel points at which guide channel. This module is only reads: the list page's `Ahora` and
-`Después` cells, and the day grid behind one channel.
+Fetching and storing the feed belongs to `app/services/epg.py`, and deciding which catalogue channel
+owns which guide channel belongs to `app/services/epg_matching.py`. What is left is reads: the guide
+cell of the list page and the day grid behind one channel.
 
-The store keeps every bound in UTC. A guide is read against a wall clock, and this house's clock is
-Europe/Madrid, so every value leaves here already converted and a template never has to think
-about zones. The conversion lives in one function because a second one would drift.
+Every bound in the store is UTC, and a guide is read against this house's clock, which is
+Europe/Madrid. So a value leaves this module already converted and a template never handles a zone.
+The conversion is written once, below, because a second copy of it would drift.
 """
 
 from __future__ import annotations
@@ -22,26 +22,30 @@ from app.db import models
 
 MADRID = ZoneInfo("Europe/Madrid")
 
-# The grid shows the day ahead, the same horizon the feed's 72 h window is windowed for.
+# The day the grid shows. The store's own horizon is three days, so this is always inside it.
 GRID_HOURS = 24
 
+# A grid prints the hour and the minute and nothing else: the date is the page's, not the row's.
+CLOCK = "%H:%M"
+STAMP = "%Y-%m-%d %H:%M"
 
-def local(value: datetime, fmt: str = "%Y-%m-%d %H:%M") -> str:
-    """One stored UTC datetime written in Madrid time; `local(t, '%H:%M')` for the hour alone."""
+
+def local(value: datetime, fmt: str = STAMP) -> str:
+    """One stored UTC datetime as Madrid time; `local(t, '%H:%M')` for the hour alone."""
     return value.astimezone(MADRID).strftime(fmt)
 
 
 def time_range(programme: models.Programme) -> str:
-    """The programme's span as a person reads a grid: `19:30–20:15`, both ends Madrid time."""
-    return f"{local(programme.start, '%H:%M')}–{local(programme.stop, '%H:%M')}"
+    """A listing's span the way a grid shows it — `19:30–20:15`, both ends Madrid time."""
+    return f"{local(programme.start, CLOCK)}–{local(programme.stop, CLOCK)}"
 
 
 @dataclass(frozen=True)
 class NowNext:
-    """One guide channel's current and following programme; either can be missing.
+    """One guide channel's current and following listing; either may be missing.
 
-    Empty is the normal state of a guide that has not been refreshed yet, and a blank cell is what
-    it looks like, not an error.
+    Missing is the ordinary state of a guide that has not been refreshed yet, and a blank cell is
+    what it looks like — not an error.
     """
 
     current: models.Programme | None = None
@@ -51,26 +55,40 @@ class NowNext:
 def now_next(
     session: Session, guide_ids: set[int] | list[int], *, now: datetime | None = None
 ) -> dict[int, NowNext]:
-    """Current and next programme per guide channel, keyed by the guide channel id.
+    """What is on and what follows, per guide channel, keyed by guide channel id.
 
-    One query for every channel on the page and not one per row: the list shows hundreds of rows,
-    and a mapped one would otherwise be a separate lookup for the same screen.
+    One query for the whole page rather than one per row: the list shows hundreds of channels and
+    every mapped one would otherwise repeat the same lookup.
     """
     ids = set(guide_ids)
     if not ids:
         return {}
     now = now or datetime.now(UTC)
-    rows = session.scalars(
-        select(models.Programme)
-        .where(models.Programme.epg_channel_id.in_(ids), models.Programme.stop > now)
-        .order_by(models.Programme.start)
-    ).all()
+    return _split(_listings_ahead(session, ids, now), now)
+
+
+def _listings_ahead(session: Session, ids: set[int], now: datetime) -> list[models.Programme]:
+    """Every listing of these channels that has not finished yet, earliest first."""
+    return list(
+        session.scalars(
+            select(models.Programme)
+            .where(models.Programme.epg_channel_id.in_(ids), models.Programme.stop > now)
+            .order_by(models.Programme.start)
+        )
+    )
+
+
+def _split(programmes: list[models.Programme], now: datetime) -> dict[int, NowNext]:
+    """Sort each channel's listings into the one on now and the first one after it.
+
+    A started listing replaces whatever the channel had as current, so the latest start wins: two
+    sources sometimes carry the same slot twice, and the one a television would be showing is the
+    one that started later.
+    """
     result: dict[int, NowNext] = {}
-    for programme in rows:
+    for programme in programmes:
         state = result.get(programme.epg_channel_id, NowNext())
         if programme.start <= now:
-            # Sources sometimes list two programmes for one slot; the later start still running is
-            # the one a television would be showing.
             result[programme.epg_channel_id] = NowNext(programme, state.following)
         elif state.following is None:
             result[programme.epg_channel_id] = NowNext(state.current, programme)
@@ -80,20 +98,23 @@ def now_next(
 def day_grid(
     session: Session, guide_id: int, *, now: datetime | None = None, hours: int = GRID_HOURS
 ) -> list[models.Programme]:
-    """One guide channel's programmes from now through `hours` ahead, earliest first.
+    """One guide channel's listings from now through `hours` ahead, earliest first.
 
-    The programme already on is included, because it started before `now` and the grid has to mark
-    it; only what has already finished is left out.
+    The listing already on is part of the grid, because it started before `now` and the page has to
+    mark it; only what has finished is left out.
     """
     now = now or datetime.now(UTC)
-    return list(
-        session.scalars(
-            select(models.Programme)
-            .where(
-                models.Programme.epg_channel_id == guide_id,
-                models.Programme.stop > now,
-                models.Programme.start < now + timedelta(hours=hours),
-            )
-            .order_by(models.Programme.start)
+    return list(session.scalars(_grid_query(guide_id, now, hours)))
+
+
+def _grid_query(guide_id: int, now: datetime, hours: int):
+    """The statement behind one channel's grid: everything not finished, inside the horizon."""
+    return (
+        select(models.Programme)
+        .where(
+            models.Programme.epg_channel_id == guide_id,
+            models.Programme.stop > now,
+            models.Programme.start < now + timedelta(hours=hours),
         )
+        .order_by(models.Programme.start)
     )

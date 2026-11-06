@@ -1,8 +1,16 @@
+{# The mapping screen: one page of channels with no guide, the proposals the matcher has for each,
+   and every manual decision taken so far.
+
+   A channel with an alias is shown as decided and gets no proposals at all — the matcher has
+   nothing to add to somebody's choice. Everything on this page is a read except the two forms: one
+   stores a decision, the other clears it, and both come back here as a GET. #}
 {% extends "base.html" %}
 
 {% block title %}Guía · acestream-suite{% endblock %}
 
-{% set kind_labels = {"exact": "exacta", "containment": "continencia", "fuzzy": "difusa", "below": "débil"} %}
+{# The matcher's own kind names, in the words the person reading the page uses, and the score
+   printed with two decimals so a 0.85 and a 0.96 are told apart at a glance. #}
+{% set kind_names = {"exact": "exacta", "containment": "continencia", "fuzzy": "difusa", "below": "débil"} %}
 {% set score_fmt = "%.2f" %}
 
 {% block content %}
@@ -12,12 +20,12 @@
     <a class="button" href="{{ url_for('channel_list') }}">Canales</a>
   </div>
 </div>
-<p class="hint">Cada canal del catálogo que se asigna a un canal de guía muestra su programación. Un canal sin guía se queda en blanco; una asignación equivocada miente sobre lo que se está emitiendo, así que lo que no esté claro es mejor dejarlo sin asignar.</p>
+<p class="hint">Un canal con guía muestra su programación en la lista. Uno sin guía se queda en blanco, y en blanco es mejor que mal asignado: decir que se emite lo que no se emite es peor que no decir nada, así que lo dudoso se deja sin asignar.</p>
 
 {% if mapping.total == 0 %}
 <section class="empty-state">
   <p class="empty-title">Todavía no hay canales en el catálogo.</p>
-  <p>Cuando siembres canales, podrás asignarles la guía desde aquí.</p>
+  <p>En cuanto haya canales sembrados, se les podrá asignar la guía desde aquí.</p>
 </section>
 {% elif mapping.guides == 0 %}
 <section class="empty-state">
@@ -52,7 +60,7 @@
           <button type="submit" class="button">Asignar</button>
         </form>
         <span class="candidate-name">{{ candidate.name }}</span>
-        <span class="hint">{{ score_fmt | format(candidate.score) }} {{ kind_labels[candidate.kind] }}</span>
+        <span class="hint">{{ score_fmt | format(candidate.score) }} {{ kind_names[candidate.kind] }}</span>
         {% if candidate.leftover %}<span class="hint candidate-leftover">{{ candidate.leftover }}</span>{% endif %}
       </span>
       {% else %}
@@ -101,6 +109,8 @@
       {% for decision in decisions %}
       <tr>
         <td class="title"><a href="{{ url_for('channel_detail', channel_id=decision.channel_id) }}">{{ decision.channel_title }}</a></td>
+        {# A decision whose guide channel the feed dropped keeps its row and loses its name: the
+           person clears it, the refresh does not. #}
         <td>{% if decision.guide_name %}{{ decision.guide_name }}{% else %}<span class="hint">la guía desapareció</span>{% endif %}</td>
         <td class="hint">{{ decision.created_by }}</td>
         <td class="row-actions">

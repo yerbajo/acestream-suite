@@ -1,8 +1,19 @@
+"""Taking the guide in: what the XMLTV sources say, and only the hours a grid can show.
+
+A refresh does three things per source. Download the feed, keep the listings that are still worth
+a row, and make the store say what this source says now. The rest of the module is about keeping a
+bad source cheap: one that never answers, serves a maintenance page, ships a 196 MB file or one
+malformed row costs that source alone, because the guide is an addition to a catalogue that works
+without it.
+
+Every instant is stored in UTC. XMLTV gives an offset and no zone at all, so the offset is applied
+once, in `parse_timestamp`, and nothing further up has to think about it.
+"""
+
 import gzip
 import io
 import json
 import logging
-import os
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -17,56 +28,61 @@ from app.db import models
 
 log = logging.getLogger(__name__)
 
-# The XMLTV sources, as a JSON list of URLs:
+# The feeds to read, as a JSON list of URLs:
 #   ACESTREAM_SUITE_EPG_SOURCES='["https://www.tdtchannels.com/epg/TV.xml.gz"]'
-# A JSON list and not a comma-separated one, because a URL carries a query string easily enough
-# that the separator would be a trap. Empty by default: no sources is a state the rest of the
-# layer has to survive anyway, since a source is a cache and never a dependency.
+# JSON because a URL brings `?`, `&` and commas of its own, so a comma-separated list would split
+# one URL into two. Empty by default: no sources is a state the layer below has to survive anyway,
+# since a source is a cache and never a dependency.
 SOURCES_ENV = "EPG_SOURCES"
 SOURCES_VAR = SUITE_PREFIX + SOURCES_ENV
 
-# Hours of guide kept ahead of `now`. 72 is what a TV grid shows, and the pruning it implies is what
-# stops a 24 MB refresh every 12 h from piling up on a host with 20 G free.
+# The horizon of the store: the hours of listings kept ahead of `now`. It is the span a TV grid
+# shows, and it is also what stops a 24 MB download every 12 h from piling up on a host with 20 G
+# to spare.
 WINDOW_HOURS = float(env("EPG_WINDOW_HOURS", "72"))
 
-# A source answers in seconds; one that never answers must cost one source and not the run.
+# A source answers in seconds; one that never answers has to cost one timeout, not the run.
 TIMEOUT_SECONDS = float(env("EPG_TIMEOUT_SECONDS", "120"))
 
-# The aggregator's all-countries file is 196 MB gzipped, so a URL pasted in wrong can still be
-# enormous. A source that goes past this is refused with a reason instead of filling the memory of
-# a container that shares its host with the database it writes to.
+# The all-countries aggregator is 196 MB gzipped, so a mistyped URL can point at something
+# enormous. The body is measured as it arrives and refused once it goes past this: one source's
+# memory, not the container's.
 MAX_BYTES = int(env("EPG_MAX_MB", "64")) * 1024 * 1024
 
 GZIP_MAGIC = b"\x1f\x8b"
 
-# A programme that ended seconds ago is what a TV with a lagging clock is still showing: the window
-# drops it from the intake, and this keeps it in the table a little longer.
+# A listing that ended a moment ago is still what a player with a slow clock is showing. The window
+# stops storing it the second it ends; this grace keeps it readable a little longer.
 PRUNE_GRACE = timedelta(seconds=float(env("EPG_GRACE_SECONDS", "300")))
+
+# Which fields a stored listing carries from its source, in the order they are compared and copied.
+_LISTING_FIELDS = ("stop", "title", "description")
 
 
 def xmltv_sources(raw: str | None = None) -> list[str]:
-    """The XMLTV URLs to fetch, from `ACESTREAM_SUITE_EPG_SOURCES`.
+    """The feed URLs to read, in the order they were configured.
 
-    A value that is not a JSON list of strings is logged and read as "no sources": a typo in a
-    compose file must not stop the app from starting, because the guide is an addition to a
-    catalogue that works without it.
+    A value that is not a JSON list of strings is logged and read as an empty list. A typo in a
+    compose file has to cost the guide and nothing else: the catalogue is browsable without one.
     """
-    if raw is None:
-        raw = env(SOURCES_ENV, "")
+    text = env(SOURCES_ENV, "") if raw is None else raw
     try:
-        values = json.loads(raw or "[]")
+        configured = json.loads(text or "[]")
     except ValueError as exc:
         log.warning("%s is not JSON, reading it as no sources: %s", SOURCES_VAR, exc)
         return []
-    if not isinstance(values, list):
+    if not isinstance(configured, list):
         log.warning("%s is not a JSON list, reading it as no sources", SOURCES_VAR)
         return []
-    return [url.strip() for url in values if isinstance(url, str) and url.strip()]
+    return [url.strip() for url in configured if isinstance(url, str) and url.strip()]
 
 
 @dataclass(frozen=True)
 class Channel:
-    """One `<channel>` of a document. `id` is the handle a programme and a mapping refer to."""
+    """One `<channel>`: the id a programme and a mapping point at, and what a grid prints.
+
+    `icon` is None when the source gave none, which is common and never a reason to drop the rest.
+    """
 
     id: str
     name: str
@@ -75,7 +91,7 @@ class Channel:
 
 @dataclass(frozen=True)
 class Programme:
-    """One `<programme>`, both bounds in UTC whatever offset its source wrote."""
+    """One `<programme>`, both bounds in UTC whatever offset its source wrote them with."""
 
     channel_id: str
     start: datetime
@@ -85,11 +101,10 @@ class Programme:
 
 
 def parse_timestamp(value: str) -> datetime:
-    """`20261013120000 +0200` -> the same instant, in UTC.
+    """An XMLTV stamp (`20261013120000 +0200`) as the instant it names, in UTC.
 
-    XMLTV gives an offset and nothing else: no zone name, no epoch. UTC is the form the app's own
-    datetime columns already take, it is what a window can be compared against, and it is what lets
-    the reader's browser render the guide in its own zone.
+    The offset in the stamp is all a source ever says about its zone, and UTC is the form every
+    stored window is compared against and every reader's zone is rendered from.
     """
     try:
         parsed = datetime.strptime(value.strip(), "%Y%m%d%H%M%S %z")
@@ -99,63 +114,75 @@ def parse_timestamp(value: str) -> datetime:
 
 
 def parse_xmltv(document: str | bytes | BinaryIO) -> tuple[list[Channel], list[Programme]]:
-    """The channels and programmes of one XMLTV document, in a single streaming pass.
+    """The channels and listings of one document, read in a single pass that never holds it whole.
 
-    `iterparse` and `element.clear()` because the sources are 5-24 MB of XML each: reading one
-    whole would hold several copies of it — the bytes, the tree, the result — for the sake of the
-    few hours of it that `in_window` keeps. Every source is treated as unreliable, so a truncated
-    download or a maintenance page is not an exception to the caller: whatever parsed before the
-    break is returned and the rest is dropped.
+    A feed is 5 to 24 MB of XML while only a few hours of it survive the window, so each element is
+    released as soon as it has been read. Sources are the least reliable thing the app talks to:
+    whatever parsed before a truncated download or a maintenance page is returned, and the rest is
+    data lost, not an exception raised.
     """
-    channels: list[Channel] = []
-    programmes: list[Programme] = []
+    found = _Found()
     root: ET.Element | None = None
     try:
-        for event, element in ET.iterparse(_as_stream(document), events=("start", "end")):
+        for event, element in ET.iterparse(_byte_stream(document), events=("start", "end")):
             if root is None:
                 root = element
-            if event == "start":
-                continue
-            if element.tag == "channel":
-                channel = _channel(element)
-                if channel is not None:
-                    channels.append(channel)
-            elif element.tag == "programme":
-                programme = _programme(element)
-                if programme is not None:
-                    programmes.append(programme)
-            else:
-                continue
-            element.clear()
-            # `clear()` frees the text, but the document's own root keeps the element itself in its
-            # children list, and the pass would end up holding one cleared shell per programme:
-            # 3 MiB of live memory on the 24 MB epgshare01 feed, measured as 99 MiB of RSS after
-            # the pass against 96 MiB with the root emptied (the process's own peak does not move —
-            # that one is set by the imports and the document, well before the first element).
-            # Emptying the root is safe: the parser appends the next child to it.
-            if root is not None:
-                root.clear()
+            if event == "end" and _collected(element, found):
+                element.clear()
+                # Clearing the element is not enough: the document's root keeps every child it has
+                # seen, so the pass would end up holding one emptied shell per listing (99 MiB of
+                # RSS after the 24 MB epgshare01 feed, against 96 with the root emptied). Emptying
+                # the root is safe because the parser appends the next child to it.
+                if root is not None:
+                    root.clear()
     except ET.ParseError as exc:
         log.warning("XMLTV document is not well formed, keeping what parsed: %s", exc)
-    return channels, programmes
+    return found.channels, found.programmes
+
+
+@dataclass
+class _Found:
+    """What the pass over one document has collected so far."""
+
+    channels: list[Channel] = field(default_factory=list)
+    programmes: list[Programme] = field(default_factory=list)
+
+
+def _collected(element: ET.Element, found: _Found) -> bool:
+    """File one finished element as a channel or a listing, and say whether it was either.
+
+    Everything else is left untouched on purpose: a `<title>` is what the listing around it is made
+    of, so it has to still be there when the listing itself ends.
+    """
+    if element.tag == "channel":
+        channel = _channel_of(element)
+        if channel is not None:
+            found.channels.append(channel)
+        return True
+    if element.tag == "programme":
+        programme = _listing_of(element)
+        if programme is not None:
+            found.programmes.append(programme)
+        return True
+    return False
 
 
 def in_window(
     programme: Programme, *, now: datetime | None = None, hours: float = WINDOW_HOURS
 ) -> bool:
-    """Whether a programme is still worth a row: on now, or starting inside the window.
+    """Whether this listing earns a row: it is on now, or it starts before the horizon.
 
-    A finished programme is dropped, which is what makes a refresh an update instead of a file
-    that only grows — the guide is only ever asked what is on. The far future is dropped for a
-    different reason: that bound belongs to the sources, not to the grid, and a feed that suddenly
-    ships a year of listings must not be stored whole.
+    Two bounds, two reasons. Dropping what has finished is what makes a refresh an update instead
+    of a table that only grows, because the guide is only ever asked what is on. The far bound
+    belongs to the sources and not to the grid: a feed that suddenly ships a year of listings must
+    not be stored whole.
     """
     now = now or datetime.now(UTC)
     return programme.stop > now and programme.start < now + timedelta(hours=hours)
 
 
-def _as_stream(document: str | bytes | BinaryIO) -> BinaryIO:
-    """A readable of bytes: a file (a gunzipped source included), a str or raw bytes."""
+def _byte_stream(document: str | bytes | BinaryIO) -> BinaryIO:
+    """The document as something the XML parser can pull bytes from."""
     if isinstance(document, (bytes, bytearray)):
         return io.BytesIO(document)
     if isinstance(document, str):
@@ -163,27 +190,37 @@ def _as_stream(document: str | bytes | BinaryIO) -> BinaryIO:
     return document
 
 
-def _text(element: ET.Element, tag: str) -> str:
+def _child_text(element: ET.Element, tag: str) -> str:
+    """The stripped text of one child, or `''` when the child or its text is missing."""
     child = element.find(tag)
     return (child.text or "").strip() if child is not None else ""
 
 
-def _channel(element: ET.Element) -> Channel | None:
+def _channel_of(element: ET.Element) -> Channel | None:
+    """One `<channel>`, or None when it carries no id.
+
+    The id is the only handle a listing or a mapping can use, so a channel without one can never be
+    matched to anything and is dropped. The id is also the display name when the source gives none:
+    something has to be printed where the name goes.
+    """
     channel_id = (element.get("id") or "").strip()
     if not channel_id:
-        # The id is the only handle on a guide entry, so a channel without one can never be matched.
         return None
     icon = element.find("icon")
     icon_src = (icon.get("src") or "").strip() if icon is not None else ""
-    # A source that ships no display-name still needs one, and the id is the only other thing there.
     return Channel(
         id=channel_id,
-        name=_text(element, "display-name") or channel_id,
+        name=_child_text(element, "display-name") or channel_id,
         icon=icon_src or None,
     )
 
 
-def _programme(element: ET.Element) -> Programme | None:
+def _listing_of(element: ET.Element) -> Programme | None:
+    """One `<programme>`, or None for a row the store could not place.
+
+    A listing needs a channel to hang on and two readable bounds. One bad row in a 24 MB community
+    feed is that row lost, never the day's guide.
+    """
     channel_id = (element.get("channel") or "").strip()
     if not channel_id:
         return None
@@ -191,26 +228,33 @@ def _programme(element: ET.Element) -> Programme | None:
         start = parse_timestamp(element.get("start", ""))
         stop = parse_timestamp(element.get("stop", ""))
     except ValueError as exc:
-        # One bad row in a 24 MB community feed is dropped, not raised: the rest of the file is
-        # still the day's guide, and one malformed entry cannot be allowed to lose all of it.
         log.warning("skipping an XMLTV programme of %s: %s", channel_id, exc)
         return None
     return Programme(
         channel_id=channel_id,
         start=start,
         stop=stop,
-        title=_text(element, "title"),
-        description=_text(element, "desc") or None,
+        title=_child_text(element, "title"),
+        description=_child_text(element, "desc") or None,
     )
 
 
 def fetch(source: str, *, timeout: float = TIMEOUT_SECONDS) -> bytes:
-    """The XML of one source. Gzip is decided by the bytes and never by the URL.
+    """The XML of one source, decompressed when it arrived compressed.
 
-    tdtchannels answers the `.gz` path with a 301 to a file whose content-type says nothing, and
-    epgshare01 serves gzip from a path that does not mention it: a suffix is not a content type.
-    Everything a source can do wrong is left to the caller — a source is a cache, and a broken one
-    is skipped, not raised.
+    Gzip is decided by the first two bytes of the body and never by the URL: tdtchannels redirects
+    its `.gz` path to a file whose content-type says nothing, and epgshare01 serves gzip from a path
+    that never mentions it. A source that fails here raises, and the caller is the one that decides
+    a source is disposable.
+    """
+    return _gunzipped(_download(source, timeout))
+
+
+def _download(source: str, timeout: float) -> bytes:
+    """Every byte of one response, refused as soon as it grows past the cap.
+
+    The refusal happens while the body is still arriving, so an enormous source costs a partial
+    download and not its whole size in memory.
     """
     with httpx.Client(timeout=timeout, follow_redirects=True) as client:
         with client.stream("GET", source) as response:
@@ -220,20 +264,25 @@ def fetch(source: str, *, timeout: float = TIMEOUT_SECONDS) -> bytes:
                 body += chunk
                 if len(body) > MAX_BYTES:
                     raise ValueError(f"la descarga pasa de {MAX_BYTES // 2**20} MB")
-    if bytes(body[:2]) == GZIP_MAGIC:
-        try:
-            body = gzip.decompress(body)
-        except OSError as exc:
-            raise ValueError(f"no se pudo descomprimir la respuesta: {exc}") from exc
     return bytes(body)
+
+
+def _gunzipped(body: bytes) -> bytes:
+    """The document inside the body: decompressed only when the magic bytes say it is gzip."""
+    if body[:2] != GZIP_MAGIC:
+        return body
+    try:
+        return gzip.decompress(body)
+    except OSError as exc:
+        raise ValueError(f"no se pudo descomprimir la respuesta: {exc}") from exc
 
 
 @dataclass
 class SourceReport:
     """What one source gave this run, or why it gave nothing.
 
-    `stored` counts the rows written, so a second refresh of an unchanged document reports 0 and
-    the idempotence of the storage is visible in the summary instead of only in the database.
+    `stored` counts the rows that changed, so a second refresh of an unchanged document reports 0
+    and the idempotence of the storage is visible in the summary and not only in the database.
     """
 
     source: str
@@ -247,7 +296,7 @@ class SourceReport:
 
 @dataclass
 class Report:
-    """The whole refresh: one entry per source, in the order they were fetched."""
+    """The whole refresh: one entry per source, in the order they were read."""
 
     now: datetime
     sources: list[SourceReport] = field(default_factory=list)
@@ -255,7 +304,7 @@ class Report:
 
     @property
     def fatal(self) -> bool:
-        """Whether every source failed. A guide with one live provider is still a guide."""
+        """Whether no source answered at all. One live provider is still a guide."""
         return bool(self.sources) and all(item.error for item in self.sources)
 
 
@@ -266,48 +315,68 @@ def refresh(
     now: datetime | None = None,
     dry_run: bool = False,
 ) -> Report:
-    """Fetch every source, store what is on, drop what is over. One dead source never fails it.
+    """Bring the store up to date with every source, one source at a time.
 
-    `sources` defaults to `xmltv_sources()`. `now` is a parameter because the window and the
-    pruning are both measured from it: a test that wants a second refresh six hours later must not
-    have to wait six hours, and the host's clock is not the only one a container can be handed.
+    `sources` defaults to `xmltv_sources()`. `now` is a parameter because the window and the pruning
+    are both measured from it: a test that wants the next refresh six hours later must not wait six
+    hours, and the host's clock is not the only clock a container can be handed.
     """
     now = now or datetime.now(UTC)
     report = Report(now=now)
     for source in xmltv_sources() if sources is None else sources:
         item = SourceReport(source=source)
         report.sources.append(item)
-        try:
-            document = fetch(source)
-            channels, programmes = parse_xmltv(document)
-            if not channels:
-                # A 404 page, a maintenance page and an empty feed all answer 200. None of them
-                # names a single channel, and a programme can only be hung on a channel, so this is
-                # a source that did not answer rather than a source with empty listings.
-                raise ValueError("no trae ningún canal, no parece un XMLTV")
-        except (httpx.HTTPError, OSError, ValueError) as exc:
-            item.error = str(exc) or exc.__class__.__name__
-            log.warning("fuente EPG %s descartada: %s", source, exc)
-            continue
-
-        item.channels = len(channels)
-        item.parsed = len(programmes)
-        # A feed that ships a year of listings must not be stored whole: only what the grid can
-        # still show goes in, and the rest is dropped before it ever reaches a row.
-        kept = [programme for programme in programmes if in_window(programme, now=now)]
-        item.windowed = len(kept)
-        if dry_run:
-            continue
-        item.stored = _store(session, source, channels, kept, now=now)
-        item.pruned, removed = _prune(session, source, now=now)
-        report.channels_removed += removed
-        # One commit per source, the posture the importer already takes: a source that breaks half
-        # way keeps what the earlier ones gave.
-        session.commit()
+        report.channels_removed += _refresh_source(session, source, item, now=now, dry_run=dry_run)
     return report
 
 
-def _store(
+def _refresh_source(
+    session: Session, source: str, item: SourceReport, *, now: datetime, dry_run: bool
+) -> int:
+    """Take one source from download to commit, filling in its entry as it goes.
+
+    Returns the number of guide channels that source stopped offering. A source that fails leaves
+    the store exactly as it was, and every row it gave last time still there: losing a dead
+    provider's guide is not a repair.
+    """
+    try:
+        channels, programmes = _incoming(source)
+    except (httpx.HTTPError, OSError, ValueError) as exc:
+        item.error = str(exc) or exc.__class__.__name__
+        log.warning("fuente EPG %s descartada: %s", source, exc)
+        return 0
+
+    item.channels = len(channels)
+    item.parsed = len(programmes)
+    # A feed that ships a year of listings is trimmed before it reaches a row: the store keeps the
+    # hours the grid can still show and nothing else.
+    kept = [programme for programme in programmes if in_window(programme, now=now)]
+    item.windowed = len(kept)
+    if dry_run:
+        return 0
+
+    item.stored = _write_source(session, source, channels, kept, now=now)
+    item.pruned, removed = _prune(session, source, now=now)
+    # One commit per source, the same posture the importer takes: a source that breaks half way
+    # keeps what the ones before it gave.
+    session.commit()
+    return removed
+
+
+def _incoming(source: str) -> tuple[list[Channel], list[Programme]]:
+    """What one source says, or the reason it says nothing worth storing.
+
+    A 404 page, a maintenance page and an empty feed all answer 200, and none of them declares a
+    single channel. A listing needs a channel to hang on, so a document with no channel is a source
+    that did not answer rather than a source with empty listings.
+    """
+    channels, programmes = parse_xmltv(fetch(source))
+    if not channels:
+        raise ValueError("no trae ningún canal, no parece un XMLTV")
+    return channels, programmes
+
+
+def _write_source(
     session: Session,
     source: str,
     channels: list[Channel],
@@ -315,49 +384,76 @@ def _store(
     *,
     now: datetime,
 ) -> int:
-    """Write this source's channels and the windowed programmes; returns the rows written.
+    """Write what one source declared and the listings that survived the window; rows written.
 
-    The two unique constraints are what makes this idempotent: a channel is looked up by
-    (source, source_channel_id) and a programme by (epg_channel_id, start), so a second refresh of
-    the same document updates what is there instead of adding a second copy of it.
+    Two unique keys carry the idempotence: a channel is the one with its (source, source channel
+    id), a listing the one with its (guide channel, start). A second refresh of the same document
+    therefore updates the rows that are there instead of adding a second copy of them.
     """
-    known = {
+    existing = {
         row.source_channel_id: row
         for row in session.scalars(
             select(models.EpgChannel).where(models.EpgChannel.source == source)
         )
     }
+    declared = _declared(session, existing, source, channels, now=now)
+    # One flush for the whole source: a listing needs its channel's row id, and a flush per channel
+    # would be one INSERT per channel.
+    session.flush()
+    return _write_listings(session, declared, programmes)
+
+
+def _declared(
+    session: Session,
+    existing: dict[str, models.EpgChannel],
+    source: str,
+    channels: list[Channel],
+    *,
+    now: datetime,
+) -> dict[str, models.EpgChannel]:
+    """This document's channels as stored rows, created or refreshed, keyed by the source's id.
+
+    Only what this document declares comes back: a channel the source has dropped keeps its row
+    until the pruning takes it, and never counts as a home for a listing.
+    """
     for channel in channels:
-        row = known.get(channel.id)
+        row = existing.get(channel.id)
         if row is None:
             row = models.EpgChannel(source=source, source_channel_id=channel.id)
             session.add(row)
-            known[channel.id] = row
+            # A document that declares one id twice must not reach the flush as two INSERTs of one
+            # key; the second mention lands on the row the first one created.
+            existing[channel.id] = row
         row.name, row.icon, row.last_seen = channel.name, channel.icon, now
-    # One flush for the whole source: a programme needs its channel's id, and a flush per channel
-    # would be one INSERT per channel.
-    session.flush()
-    ids = {channel.id: known[channel.id].id for channel in channels}
+    return {channel.id: existing[channel.id] for channel in channels}
 
+
+def _write_listings(
+    session: Session, declared: dict[str, models.EpgChannel], programmes: list[Programme]
+) -> int:
+    """Write the windowed listings of one source, grouped by the channel they belong to.
+
+    A listing for a channel the document never declared has no row to hang on and is dropped: the
+    alternative is inventing a guide channel with a name nobody wrote.
+    """
     by_channel: dict[int, list[Programme]] = {}
     for programme in programmes:
-        # A programme whose channel the same document does not declare is dropped: there is no row
-        # to hang it on, and inventing one would put a made-up name in the guide.
-        channel_id = ids.get(programme.channel_id)
-        if channel_id is not None:
-            by_channel.setdefault(channel_id, []).append(programme)
+        row = declared.get(programme.channel_id)
+        if row is not None:
+            by_channel.setdefault(row.id, []).append(programme)
     return sum(
-        _store_programmes(session, channel_id, items) for channel_id, items in by_channel.items()
+        _write_channel_listings(session, row_id, items) for row_id, items in by_channel.items()
     )
 
 
-def _store_programmes(session: Session, channel_id: int, programmes: list[Programme]) -> int:
-    """Insert the new listings of one channel and update the ones that changed.
+def _write_channel_listings(session: Session, channel_id: int, programmes: list[Programme]) -> int:
+    """Insert one channel's new listings and rewrite the ones the provider edited.
 
-    The lookup is on UNIQUE (epg_channel_id, start): a programme whose end time or title was edited
-    by the provider is the same row, not a second one.
+    The start time is the identity of a listing, so an end time or a title the provider fixed is an
+    update of the same row and not a second one. What the row keeps beyond that is what `_apply`
+    copies, which is also what the count of written rows means.
     """
-    existing = {
+    stored = {
         row.start: row
         for row in session.scalars(
             select(models.Programme).where(
@@ -368,43 +464,46 @@ def _store_programmes(session: Session, channel_id: int, programmes: list[Progra
     }
     written = 0
     for programme in programmes:
-        row = existing.get(programme.start)
-        if row is not None:
-            if (row.stop, row.title, row.description) != (
-                programme.stop,
-                programme.title,
-                programme.description,
-            ):
-                row.stop, row.title, row.description = (
-                    programme.stop,
-                    programme.title,
-                    programme.description,
-                )
-                written += 1
-            continue
-        row = models.Programme(
-            epg_channel_id=channel_id,
-            start=programme.start,
-            stop=programme.stop,
-            title=programme.title,
-            description=programme.description,
-        )
-        session.add(row)
-        # The same document listing a programme twice must not reach the flush as two INSERTs of
-        # one key: the second one is an update of the row that is already pending.
-        existing[programme.start] = row
-        written += 1
+        row = stored.get(programme.start)
+        if row is None:
+            row = models.Programme(
+                epg_channel_id=channel_id,
+                start=programme.start,
+                stop=programme.stop,
+                title=programme.title,
+                description=programme.description,
+            )
+            session.add(row)
+            # The same document listing one start twice must not be two INSERTs of one key either.
+            stored[programme.start] = row
+            written += 1
+        elif _apply(row, programme):
+            written += 1
     return written
 
 
-def _prune(session: Session, source: str, *, now: datetime) -> tuple[int, int]:
-    """Drop what one source stopped offering: (programmes pruned, channels removed).
+def _apply(row: models.Programme, programme: Programme) -> bool:
+    """Copy the source's fields onto a stored listing, and say whether any of them changed."""
+    changed = tuple(getattr(row, name) for name in _LISTING_FIELDS) != tuple(
+        getattr(programme, name) for name in _LISTING_FIELDS
+    )
+    for name in _LISTING_FIELDS:
+        setattr(row, name, getattr(programme, name))
+    return changed
 
-    Only the rows of the source that was just read. A source that did not answer keeps every row it
-    gave last time — losing a dead provider's guide is not a repair, and the next refresh that
-    reaches it writes the rows again anyway.
+
+def _prune(session: Session, source: str, *, now: datetime) -> tuple[int, int]:
+    """Drop what one source stopped offering: (listings pruned, guide channels removed)."""
+    return _pruned_listings(session, source, now), _removed_channels(session, source, now)
+
+
+def _pruned_listings(session: Session, source: str, now: datetime) -> int:
+    """Remove this source's listings that ended longer ago than the grace period.
+
+    Only the rows of the source that was just read: a provider that did not answer keeps its guide
+    untouched.
     """
-    pruned = session.execute(
+    return session.execute(
         delete(models.Programme).where(
             models.Programme.stop < now - PRUNE_GRACE,
             models.Programme.epg_channel_id.in_(
@@ -412,11 +511,17 @@ def _prune(session: Session, source: str, *, now: datetime) -> tuple[int, int]:
             ),
         )
     ).rowcount
-    # A channel whose `last_seen` the run above did not touch is one this source has stopped
-    # offering. Its programmes go with it: ON DELETE CASCADE, and they are not counted as pruned.
-    removed = session.execute(
+
+
+def _removed_channels(session: Session, source: str, now: datetime) -> int:
+    """Remove the channels this refresh did not see, and with them their listings.
+
+    A channel whose `last_seen` the write above left behind is one the source has stopped listing.
+    Its listings leave by ON DELETE CASCADE and are not counted as pruned, which is why the two
+    numbers are reported apart.
+    """
+    return session.execute(
         delete(models.EpgChannel).where(
             models.EpgChannel.source == source, models.EpgChannel.last_seen < now
         )
     ).rowcount
-    return pruned, removed

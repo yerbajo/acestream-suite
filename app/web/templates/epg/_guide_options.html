@@ -1,5 +1,6 @@
-{# Options for one row's guide picker on the mapping screen; htmx swaps them into the `<select>`.
-   Empty means "no coincidence", which is a normal answer and not an error. #}
+{# Options for one row's guide picker on the mapping screen; htmx swaps them into the row's `<select>`.
+   No guide matching the search is an ordinary answer, so it gets its own option instead of an
+   empty list that would look like a broken control. #}
 {% for guide in guides %}
 <option value="{{ guide.id }}">{{ guide.name }}</option>
 {% else %}
