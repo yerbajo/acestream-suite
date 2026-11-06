@@ -184,9 +184,8 @@ about to install.
 
 | Script | What it writes |
 |---|---|
-| `acestream-suite-playlist.py` | Six M3U files in the web directory: `acestream-suite.m3u` (everything), `deportes.m3u`, `espana.m3u`, `hls.m3u` (with a `Campeones` folder), `direct.m3u` (the engine's own MPEG-TS) and `madrid.m3u` (the Real Madrid match on air, empty otherwise). Only channels the app has verified as alive, one entry per display name, every URL through the HLS bridge except `direct.m3u`. Writes only when the content changed. |
+| `acestream-suite-playlist.py` | Five M3U files in the web directory: `acestream-suite.m3u` (everything), `deportes.m3u`, `espana.m3u`, `hls.m3u` (with a `Campeones` folder), and `direct.m3u` (the engine's own MPEG-TS). Only channels the app has verified as alive, one entry per display name, every URL through the HLS bridge except `direct.m3u`. Writes only when the content changed. |
 | `acestream-suite-guide-playlist.py` | `acestream-suite-guide.m3u`: the same catalogue with `url-tvg` on the header and the guide channel id as `tvg-id`, for the channels that have one. |
-| `acestream-suite-partido.py` | Imports the channels airing a Real Madrid match, live, into the catalogue (category `Real Madrid`); writes the live set to `/var/lib/acestream-suite-partido/live.json` and its own state to `state.json`, read by the playlist script. |
 | `acestream-suite-prune.py` | A one-shot cleanup: waits until every channel has been checked, backs up to `/backup/…/<stamp>/` (playlists, a re-importable catalogue export, a copy of the database, the deletion list), then deletes the channels whose last check was not alive, through the app's own API. Marks itself done; `--undo-guard` lets it run again. |
 | `crons-install.sh` | Root's crontab on the target host, generated from `scripts/*.cron`. `--dry-run` prints, `--diff` compares against the live crontab, `--install` backs up and writes. Its `JOBS` array also carries jobs from other stacks — read it before installing. |
 
@@ -214,8 +213,13 @@ the Lucide icon strokes (ISC) are vendored in `app/web/`.
 
 ## How this is deployed here
 
-A house deployment looks like this: one LAN host running the container next to a WireGuard-tunnelled
-engine on another machine, a reverse proxy serving a directory of playlists, and the cron jobs above
-on the host. That is the shape the scripts assume, not the only way to run it — the compose file is the
-interface, and the environment variables above are
-the knobs.
+**This repository is the suite, not the engine.** An AceStream engine is a dependency you point it at:
+any engine whose HTTP API the container can reach will do, and wherever the author's own engine runs —
+another machine, inside a VPN, behind a proxy — is outside this repository and irrelevant to it. The
+suite assumes only that the URL in `ACESTREAM_SUITE_ENGINE_URL` answers.
+
+What this repository does describe is a small, ordinary deployment: one host running
+`docker compose up -d`, its values in `.env`, a web server or reverse proxy publishing the directory
+the playlist script writes, and — if you want the lists and the guide refreshed on a schedule — the
+cron jobs above. The compose file is the interface, the environment variables above are the knobs, and
+the scripts under `scripts/` are optional helpers you can read, run by hand or schedule.

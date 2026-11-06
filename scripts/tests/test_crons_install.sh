@@ -317,7 +317,7 @@ unset CRONS_TEST_FAIL_MV
 # 20. The product rename (S3/S4): the jobs, and the .cron files behind them, carry the new names
 # ---------------------------------------------------------------------------
 REPO_SCRIPTS="$(cd "$HERE/.." && pwd)"
-nuevos=(acestream-suite-playlist acestream-suite-partido acestream-suite-prune \
+nuevos=(acestream-suite-playlist acestream-suite-prune \
         acestream-suite-guide-playlist acestream-suite-guide-refresh)
 for j in "${nuevos[@]}"; do
   check "JOBS carries $j" "$(printf '%s\n' "${JOBS_ARR[@]}" | grep -qx "$j"; echo $?)"
@@ -337,7 +337,7 @@ done
 export CRONS_SOURCE_DIR="$REPO_SCRIPTS"
 run
 check "the repository's own .cron files generate (exit 0)" "$RC"
-for j in acestream-suite-playlist acestream-suite-partido acestream-suite-prune \
+for j in acestream-suite-playlist acestream-suite-prune \
          acestream-suite-guide-playlist; do
   check "the generated crontab runs /usr/local/bin/$j" \
     "$(grep -qF "/usr/local/bin/$j " "$TMP/out"; echo $?)"
@@ -349,20 +349,20 @@ check "the generated crontab has the guide-refresh block" \
 # for another consumer lives outside the repository. Only those two, and the line is harmless when
 # the file is absent (POSIX sh; the crontab runs /bin/sh).
 ENV_LINE='[ -r /etc/acestream-suite.env ] && . /etc/acestream-suite.env;'
-# Los cinco trabajos del producto cargan el fichero del host: el repositorio trae valores genéricos
+# Los cuatro trabajos del producto cargan el fichero del host: el repositorio trae valores genéricos
 # y los de cada despliegue viven ahí, así que ninguno puede depender del entorno por su cuenta.
 for j in acestream-suite-playlist acestream-suite-guide-playlist; do
   check "$j loads /etc/acestream-suite.env" \
     "$(grep -qF "$ENV_LINE /usr/local/bin/$j " "$TMP/out"; echo $?)"
 done
-for j in acestream-suite-partido acestream-suite-prune; do
+for j in acestream-suite-prune; do
   check "$j loads /etc/acestream-suite.env" \
     "$(grep -qF "$ENV_LINE /usr/local/bin/$j " "$TMP/out"; echo $?)"
 done
 check "the guide refresh loads /etc/acestream-suite.env" \
   "$(grep -qF "$ENV_LINE /usr/bin/flock" "$TMP/out"; echo $?)"
-check "all five product jobs load /etc/acestream-suite.env" \
-  "$([ "$(grep -cF "$ENV_LINE" "$TMP/out")" = 5 ]; echo $?)"
+check "all four product jobs load /etc/acestream-suite.env" \
+  "$([ "$(grep -cF "$ENV_LINE" "$TMP/out")" = 4 ]; echo $?)"
 check "no job outside the product loads it" \
   "$([ "$(grep -F "$ENV_LINE" "$TMP/out" | grep -vc 'acestream-suite')" = 0 ]; echo $?)"
 check "the env-file load does not break when the file is absent" \

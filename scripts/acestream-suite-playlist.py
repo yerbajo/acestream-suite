@@ -9,7 +9,7 @@ WHY THIS EXISTS
     truth for those URLs: it asks acestream-suite for its own export and drops the files in a directory
     Caddy already serves, so the links never change even though the catalog does.
 
-    Five playlists, all from the same catalog, plus the one that is not a filter of the catalog:
+    Five playlists, all from the same catalog:
 
     | file                | what it holds                                                   |
     |---------------------|-----------------------------------------------------------------|
@@ -18,13 +18,12 @@ WHY THIS EXISTS
     | espana.m3u          | from Spain: `ES`, the Spanish categories, or a Spanish name       |
     | hls.m3u             | sports or Spanish, with a `Campeones` folder of its own          |
     | direct.m3u          | everything, as the engine's own MPEG-TS                          |
-    | madrid.m3u          | the Real Madrid match that is on air, and nothing else (S12)     |
 
     A consumer that still asks for another file name is served without this script knowing that
     name: `ACESTREAM_SUITE_COMPAT_ALIASES` is a comma-separated list of `new-file=other-file` pairs
     and each copy is written next to its own list. Empty or unset — the default — writes nothing
     extra; the host that needs one keeps it in `/etc/acestream-suite.env`, which the `.cron` loads.
-    The other five names do not change: the TV reads `hls.m3u`.
+    The names themselves do not change: the TV reads `hls.m3u`.
 
     Every display name ends with the quality the catalog detected (`Canal 1080p`), so searching the
     list for "1080p" works; `tvg-name` keeps the bare name, because guide matching reads it.
@@ -34,25 +33,8 @@ WHY THIS EXISTS
     (a re-stream of La 1 is "amateur" to it), and because it leaves the language and the country
     empty for most of them.
 
-THE LIVE SET: THE MATCH ON AIR, NOT A CATEGORY
-    `scripts/acestream-suite-partido.py` writes `/var/lib/acestream-suite-partido/live.json`
-    (`--live-file`) after every run: the content ids airing a Real Madrid match now or in the hour
-    before, each one with the `stop` of its programme. This script reads it and only while
-    `now < stop`:
-
-    - `deportes.m3u` and `hls.m3u` give those channels `group-title="Real Madrid"`;
-    - `madrid.m3u` carries those channels and nobody else.
-
-    A missing file, an unreadable one or an expired entry is not an error: the channel simply has no
-    a missing file, an unreadable one or an expired entry is not an error: the channel simply has no
-    folder and is not in `madrid.m3u`, and it stays in `acestream-suite.m3u` with its own category.
-    Nothing is ever deleted from the catalog, and the folder appears with the match and goes away when
-    it ends.
-    The `Real Madrid` category still counts as sport on its own, which is what puts those channels in
-    the two sports lists in the first place; it is not what decides the folder.
-
 WHERE THE LINKS POINT
-    The stream URLs in the playlists are NOT acestream-suite's. Five of the six point at the HLS bridge
+    The stream URLs in the playlists are NOT acestream-suite's. Four of the five point at the HLS bridge
     (`${ACESTREAM_SUITE_HLS_BASE}`, `:8084/<hash>/index.m3u8` on this deployment), and only
     `direct.m3u` carries the engine's own MPEG-TS URL — `http://127.0.0.1:6878/ace/getstream`
     `?infohash=<hash>`, the tunneled engine behind its nginx. The bridge is the default for a reason
@@ -80,7 +62,6 @@ USAGE
 """
 
 import argparse
-import datetime
 import fcntl
 import json
 import os
@@ -112,13 +93,8 @@ OUTPUT_DIR = env("ACESTREAM_SUITE_PLAYLIST_DIR", "/srv/www/varios")
 HLS_BASE = env("ACESTREAM_SUITE_HLS_BASE", "http://127.0.0.1:8084")
 LOG_PATH = env("ACESTREAM_SUITE_PLAYLIST_LOG", "/var/log/acestream-suite-playlist.log")
 LOCK_PATH = env("ACESTREAM_SUITE_PLAYLIST_LOCK", "/var/lock/acestream-suite-playlist.lock")
-# El conjunto en directo de `scripts/acestream-suite-partido.py`: la misma variable de entorno en los
-# dos scripts, para que mover el fichero sea un solo cambio. Ausente = sin carpeta y sin `madrid.m3u`.
-LIVE_FILE = env("ACESTREAM_SUITE_PARTIDO_LIVE", "/var/lib/acestream-suite-partido/live.json")
-# Los marcadores de los documentos, que son el contrato con la app y no la marca del producto:
-# el del export que se lee y el del conjunto en directo que escriben los partidos.
+# El marcador del documento que se lee, que es el contrato con la app y no la marca del producto.
 EXPORT_FORMAT = "acestream-suite"
-LIVE_FORMAT = "acestream-suite-partido-live"
 TIMEOUT = float(env("ACESTREAM_SUITE_PLAYLIST_TIMEOUT", "30"))
 # The engine's own name for the stream parameter (the Linux 3.2.11 build answers `failed to load
 # content` to `id`; see the docstring above).
@@ -133,11 +109,7 @@ STATUS = env("ACESTREAM_SUITE_PLAYLIST_STATUS", "alive")
 # Sports. The categories are the engine's own tags (and the three Spanish ones this deployment
 # made); the names catch what the engine filed elsewhere. `premier` is `Premier Sports` and not the
 # movie channels called "Premiere", and `bein` is `beIN Sports` and not `beIN Movies`.
-#
-# `Real Madrid` is the category `scripts/acestream-suite-partido.py` gives the channels it imports on match
-# day: it counts as sport on its own, and it is also the folder `deportes.m3u` and `hls.m3u` ask for.
-CATEGORIA_PARTIDO = "Real Madrid"
-CATEGORIAS_DEPORTES = ("Deportes", "Deportes ES", "Deportes int.", CATEGORIA_PARTIDO)
+CATEGORIAS_DEPORTES = ("Deportes", "Deportes ES", "Deportes int.")
 DEPORTES = re.compile(
     r"\b(?:sports?|deportes?|esport\d?|dazn|bein\s?sports?|espn|eurosport|sky\s?sports?|"
     r"laliga|la\s?liga|moto\s?gp|\bf1\b|teledeporte|tenis|tennis|\bnba\b|\bufc\b|boxeo|"
@@ -181,82 +153,9 @@ ESPANA = re.compile(
 CAMPEONES = re.compile(r"\bcampeones\b", re.IGNORECASE)
 
 
-def carpeta_campeones(canal, live=None):
+def carpeta_campeones(canal):
     """La carpeta propia del canal en `hls.m3u`, o None para dejarlo en la de su categoría."""
     return "Campeones" if CAMPEONES.search(canal.get("title") or "") else None
-
-
-def now_utc():
-    """Ahora en UTC y sin zona: es lo que se compara con los `stop` del conjunto en directo."""
-    return datetime.datetime(*time.gmtime()[:6])
-
-
-def parse_stop(value):
-    """El `stop` del conjunto en directo (`2026-11-04T20:00:00Z`), o None si no se entiende.
-
-    `datetime.fromisoformat` es de Python 3.7 y el host tiene 3.6.8: se parsea con `strptime`.
-    """
-    try:
-        return datetime.datetime.strptime(str(value or "").strip(), "%Y-%m-%dT%H:%M:%SZ")
-    except ValueError:
-        return None
-
-
-def live_entries(document, now=None):
-    """S11: el conjunto en directo ya sin las entradas caducadas; un documento ajeno es vacio.
-
-    La condición es `now < stop`, que es lo que hace que la carpeta dure lo que dura el partido. Una
-    entrada caducada o una fecha que no se entiende no son un error: no dan carpeta y ya está.
-    """
-    if not isinstance(document, dict) or document.get("format") != LIVE_FORMAT:
-        return {}
-    ahora = now or now_utc()
-    live = {}
-    for content_id, stop in (document.get("channels") or {}).items():
-        momento = parse_stop(stop)
-        if momento is None or momento <= ahora:
-            continue
-        live[str(content_id or "").lower()] = momento
-    return live
-
-
-def load_live(path=LIVE_FILE, now=None):
-    """S11: el conjunto en directo del disco. Un fichero ausente o ilegible es conjunto vacio.
-
-    Nunca lanza: el partido es un extra de la lista, y una lista que depende de un fichero que puede
-    no estar no se cae por ello.
-    """
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            document = json.load(handle)
-    except (IOError, OSError, ValueError):
-        return {}
-    return live_entries(document, now)
-
-
-def carpeta_real_madrid(canal, live=None):
-    """La carpeta `Real Madrid`: solo los canales del conjunto en directo (S7 y S11).
-
-    La categoría `Real Madrid` NO decide la carpeta — solo hace que el canal entre en las dos listas
-    de deporte —; si se decidiera por categoría, la carpeta se quedaría para siempre con los canales
-    de todos los partidos pasados, y el dueño quiere que sean en directo. `live` viene ya filtrado
-    por `now < stop`.
-    """
-    return CATEGORIA_PARTIDO if (canal.get("content_id") or "").lower() in (live or {}) else None
-
-
-def carpeta_hls(canal, live=None):
-    """Las dos carpetas propias de `hls.m3u`, y el conjunto en directo gana el empate.
-
-    Precedencia, decidida y no accidental: un canal que es a la vez de Movistar Liga de Campeones y
-    del conjunto en directo cae en UNA sola carpeta, y esa es `Real Madrid`. Lo pidió el dueño para
-    encontrar el partido, y la medición del 2026-11-04 lo dejó claro: con `Campeones` ganando, los dos
-    canales que emitían el AEK Atenas - Real Madrid (`M. Liga de Campeones`, `M+ LIGA DE CAMPEONES FHD
-    (SAT)`) se iban a `Campeones` y la carpeta `Real Madrid` se quedaba solo con el canal de la
-    Euroliga. Al revés no se pierde nada: en cuanto el partido acaba, esos canales salen del conjunto
-    en directo y vuelven solos a `Campeones`.
-    """
-    return carpeta_real_madrid(canal, live) or carpeta_campeones(canal)
 
 
 def log(message, path=LOG_PATH):
@@ -291,10 +190,9 @@ def hls_url(content_id, base=HLS_BASE):
 
 # The files this script owns, in the order they are written:
 # `(name, description, filter, url builder, folder)`; `None` as url means the engine's own MPEG-TS
-# URL, and `None` as folder means "group by the catalog's category", which is what `acestream-suite.m3u`,
-# `espana.m3u` and `direct.m3u` do. Two lists ask for a folder of their own: `deportes.m3u` puts the
-# `Real Madrid` category in the folder of that name, and `hls.m3u` gives the Movistar Liga de
-# Campeones channels `Campeones` and the imported match channels `Real Madrid`.
+# URL, and `None` as folder means "group by the catalog's category", which is what
+# `acestream-suite.m3u`, `deportes.m3u`, `espana.m3u` and `direct.m3u` do. Only `hls.m3u` asks for a
+# folder of its own: it gives the Movistar Liga de Campeones channels `Campeones`.
 #
 # TODAS menos `direct.m3u` apuntan al puente HLS, y es a proposito: el motor sirve UN solo lector por
 # contenido, asi que dos reproductores de la casa pidiendo el mismo canal -la tele por una URL directa
@@ -303,10 +201,10 @@ def hls_url(content_id, base=HLS_BASE):
 # un lector: el puente. `direct.m3u` se queda para Dispatcharr (que no proxya HLS) y para diagnosticar.
 PLAYLISTS = (
     ("acestream-suite.m3u", "the whole catalog, as HLS", lambda canal: True, hls_url, None),
-    ("deportes.m3u", "sports, as HLS", es_deporte, hls_url, carpeta_real_madrid),
+    ("deportes.m3u", "sports, as HLS", es_deporte, hls_url, None),
     ("espana.m3u", "Spanish channels, as HLS", es_espanol, hls_url, None),
     ("hls.m3u", "sports and Spanish, as HLS", lambda canal: es_deporte(canal) or es_espanol(canal),
-     hls_url, carpeta_hls),
+     hls_url, carpeta_campeones),
     ("direct.m3u", "the whole catalog, engine MPEG-TS (Dispatcharr, debugging)", lambda canal: True, None,
      None),
 )
@@ -411,31 +309,29 @@ def without_duplicates(channels):
     return [channel for _, channel in best.values()]
 
 
-def folder_of(channel, group=None, live=None):
+def folder_of(channel, group=None):
     """El nombre de la carpeta del canal: la que le da la lista, o la de su categoría."""
-    return (group(channel, live) if group else None) or channel.get("category") or ""
+    return (group(channel) if group else None) or channel.get("category") or ""
 
 
-def build_playlist(channels, engine=ENGINE_URL, url=None, group=None, live=None):
+def build_playlist(channels, engine=ENGINE_URL, url=None, group=None):
     """The whole playlist as text. One entry per channel name, ordered by folder and then by title.
 
     `group` lets one list put a channel in a folder of its own instead of its catalog category:
-    `deportes.m3u` and `hls.m3u` do that with the channels of the live set (`Real Madrid`), and
-    `hls.m3u` also with the Movistar Liga de Campeones channels (`Campeones`). `live` is that set,
-    already filtered by `now < stop`.
+    `hls.m3u` does that with the Movistar Liga de Campeones channels (`Campeones`).
     """
     lines = ["#EXTM3U"]
     url_for = url or (lambda content_id: stream_url(content_id, engine))
     for channel in sorted(
         without_duplicates(channels),
-        key=lambda c: (folder_of(c, group, live).lower(), (c.get("title") or "").lower()),
+        key=lambda c: (folder_of(c, group).lower(), (c.get("title") or "").lower()),
     ):
         title = display_name(channel.get("title") or channel["content_id"])
         attributes = [
             'tvg-id="%s"' % channel["content_id"].lower(),
             'tvg-name="%s"' % attribute(title),
         ]
-        folder = folder_of(channel, group, live)
+        folder = folder_of(channel, group)
         if folder:
             attributes.append('group-title="%s"' % attribute(folder))
         lines.append("#EXTINF:-1 %s,%s" % (" ".join(attributes), shown_name(channel, title)))
@@ -443,25 +339,12 @@ def build_playlist(channels, engine=ENGINE_URL, url=None, group=None, live=None)
     return "\n".join(lines) + "\n"
 
 
-def live_channels(channels, live):
-    """S12: los canales del catálogo que están en el conjunto en directo, y solo esos."""
-    return [canal for canal in channels if (canal.get("content_id") or "").lower() in (live or {})]
-
-
-def build_all(channels, engine=ENGINE_URL, live=None):
-    """`(name, text, how many channels)` for every playlist, built from the same fetch.
-
-    `madrid.m3u` goes last and does not come from the catalog filters: it is the live set of S11, so
-    with no match on air it is a valid empty playlist, never an absent file and never a 404.
-    """
+def build_all(channels, engine=ENGINE_URL):
+    """`(name, text, how many channels)` for every playlist, built from the same fetch."""
     built = []
     for name, _, selected, url, group in PLAYLISTS:
         chosen = [canal for canal in channels if selected(canal)]
-        built.append((name, build_playlist(chosen, engine, url, group, live), len(chosen)))
-    en_directo = live_channels(channels, live)
-    # Con la URL del puente, igual que las otras cinco listas del catálogo: el motor solo sirve un
-    # lector por contenido, y `direct.m3u` ya es la lista del motor para quien la quiera.
-    built.append(("madrid.m3u", build_playlist(en_directo, engine, hls_url), len(en_directo)))
+        built.append((name, build_playlist(chosen, engine, url, group), len(chosen)))
     return built
 
 
@@ -590,58 +473,13 @@ def self_test():
     for nombre in ("acestream-suite.m3u", "deportes.m3u", "espana.m3u", "direct.m3u"):
         assert 'group-title="Campeones"' not in carpetas[nombre], nombre
 
-    # La carpeta «Real Madrid» (S7 y S11): la categoría que importa el trabajo de los partidos cuenta
-    # como deporte —es lo que hace que esos canales entren en las dos listas de deporte— pero NO
-    # decide la carpeta; la decide el conjunto en directo, y solo mientras `now < stop`.
-    assert es_deporte({"title": "DAZN LaLiga 2", "category": "Real Madrid"})
-    partido = {"title": "DAZN LaLiga 2", "content_id": "99" * 20, "category": "Real Madrid"}
-    # Un partido en directo sí lleva carpeta, y fuera de las dos listas de deporte no se toca nada.
-    vivo = {partido["content_id"]: datetime.datetime(2026, 11, 4, 20, 0)}
-    assert carpeta_real_madrid(partido, vivo) == "Real Madrid"
-    assert carpeta_real_madrid(partido) is None
-    assert carpeta_real_madrid(la_liga, vivo) is None
-    # La carpeta va cableada lista por lista, no a todas: se comprueba el cableado, no el texto.
+    # La carpeta propia va cableada lista por lista, no a todas: se comprueba el cableado, no el
+    # texto, y las demás listas siguen agrupando por la categoría del catálogo.
+    assert 'group-title="Deportes ES"' in carpetas["deportes.m3u"], carpetas["deportes.m3u"]
     carpetas_por_lista = dict((n, g) for n, _, _, _, g in PLAYLISTS)
-    assert carpetas_por_lista["deportes.m3u"] is carpeta_real_madrid, carpetas_por_lista
-    assert carpetas_por_lista["hls.m3u"] is carpeta_hls, carpetas_por_lista
-    for nombre in ("acestream-suite.m3u", "espana.m3u", "direct.m3u"):
+    assert carpetas_por_lista["hls.m3u"] is carpeta_campeones, carpetas_por_lista
+    for nombre in ("acestream-suite.m3u", "deportes.m3u", "espana.m3u", "direct.m3u"):
         assert carpetas_por_lista[nombre] is None, nombre
-    listas = dict((n, tx) for n, tx, _ in build_all([partido, la_liga], live=vivo))
-    assert 'group-title="Real Madrid"' in listas["deportes.m3u"], listas["deportes.m3u"]
-    assert 'group-title="Real Madrid"' in listas["hls.m3u"], listas["hls.m3u"]
-    # Y sin partido en directo la categoría se queda como estaba: el canal no desaparece de ninguna
-    # lista, simplemente no hay carpeta especial (la de siempre es su categoría, en las dos).
-    sin_partido = dict((n, tx) for n, tx, _ in build_all([partido, la_liga], live={}))
-    assert carpeta_real_madrid(partido, {}) is None
-    assert 'group-title="Real Madrid"' in sin_partido["deportes.m3u"], sin_partido["deportes.m3u"]
-    assert 'group-title="Deportes ES"' in sin_partido["deportes.m3u"], sin_partido["deportes.m3u"]
-    # En las demás, la fila aparece (o no) por las reglas de siempre, agrupada por su categoría: la
-    # carpeta no ensancha ninguna lista. `DAZN LaLiga 2` no es español por país, ni por categoría, ni
-    # por nombre, así que sigue sin estar en `espana.m3u`.
-    assert 'group-title="Real Madrid"' in listas["acestream-suite.m3u"], listas["acestream-suite.m3u"]
-    assert 'group-title="Real Madrid"' in listas["direct.m3u"], listas["direct.m3u"]
-    assert 'group-title="Deportes ES"' in listas["deportes.m3u"], listas["deportes.m3u"]
-    assert partido["content_id"] not in listas["espana.m3u"], listas["espana.m3u"]
-    # Precedencia en `hls.m3u`: un canal que es las dos cosas —título de Campeones y en el conjunto en
-    # directo— cae en UNA sola carpeta, `Campeones` (la razón está en `carpeta_hls`), y en
-    # `deportes.m3u`, que no tiene `Campeones`, en `Real Madrid`.
-    las_dos = {"title": "M+ LIGA DE CAMPEONES FHD (SAT) --> NEW ERA", "content_id": "88" * 20,
-               "category": "Real Madrid"}
-    # El conjunto en directo gana el empate: un canal de las dos carpetas, en partido, va a `Real
-    # Madrid` (medido: con `Campeones` ganando, la carpeta del partido se quedaba sin los canales que
-    # emitían el AEK Atenas - Real Madrid).
-    assert carpeta_hls(las_dos, {("88" * 20): datetime.datetime(2026, 11, 4, 20, 0)}) == "Real Madrid"
-    assert carpeta_hls(las_dos) == "Campeones"  # sin partido, vuelve a `Campeones`
-    assert carpeta_real_madrid(las_dos, {("88" * 20): datetime.datetime(2026, 11, 4, 20, 0)}) == (
-        "Real Madrid"
-    )
-    listas_dos = dict((n, tx) for n, tx, _ in build_all([las_dos], live={("88" * 20):
-                                                                    datetime.datetime(2026, 11, 4, 20, 0)}))
-    assert listas_dos["hls.m3u"].count("#EXTINF") == 1, listas_dos["hls.m3u"]
-    assert 'group-title="Real Madrid"' in listas_dos["hls.m3u"], listas_dos["hls.m3u"]
-    assert 'group-title="Campeones"' not in listas_dos["hls.m3u"], listas_dos["hls.m3u"]
-    assert 'group-title="Real Madrid"' in listas_dos["deportes.m3u"], listas_dos["deportes.m3u"]
-    assert 'group-title="Campeones"' not in listas_dos["deportes.m3u"], listas_dos["deportes.m3u"]
     # Dos publicadores del mismo canal llegan con el mismo titulo y el reproductor los lista dos
     # veces. Se queda uno: el de mejor calidad; a igual calidad, el de una categoria de deportes; y
     # a igual todo, el content id menor, para que el resultado no dependa del orden de entrada.
@@ -660,72 +498,11 @@ def self_test():
     assert texto_repetido.count("#EXTINF") == 2, texto_repetido
     assert 'tvg-id="%s"' % ("11" * 20) in texto_repetido, texto_repetido   # 1080p gana a 720p y a nada
     assert 'tvg-id="%s"' % ("44" * 20) in texto_repetido, texto_repetido   # empate: gana Deportes ES
-    # Sin partido el mismo canal vuelve a su carpeta de siempre: `Campeones` no se queda sin sus
-    # canales para siempre.
-    sin_partido = dict((n, tx) for n, tx, _ in build_all([las_dos]))
-    assert 'group-title="Campeones"' in sin_partido["hls.m3u"], sin_partido["hls.m3u"]
-    assert 'group-title="Real Madrid"' not in sin_partido["hls.m3u"], sin_partido["hls.m3u"]
-
-    # S12: `madrid.m3u` lleva SOLO los canales del conjunto en directo, con las URLs del puente, y
-    # sin partido es una lista vacía válida: nunca falta, nunca es un 404.
-    dos_en_directo = {
-        partido["content_id"]: datetime.datetime(2026, 11, 4, 20, 0),
-        la_liga["content_id"]: datetime.datetime(2026, 11, 4, 19, 38),
-    }
-    solo_madrid = dict((n, tx) for n, tx, _ in build_all([partido, la_liga, campeon], live=dos_en_directo))
-    assert solo_madrid["madrid.m3u"].count("#EXTINF") == 2, solo_madrid["madrid.m3u"]
-    assert 'tvg-id="%s"' % partido["content_id"] in solo_madrid["madrid.m3u"], solo_madrid["madrid.m3u"]
-    assert 'tvg-id="%s"' % la_liga["content_id"] in solo_madrid["madrid.m3u"], solo_madrid["madrid.m3u"]
-    assert campeon["content_id"] not in solo_madrid["madrid.m3u"], solo_madrid["madrid.m3u"]
-    assert solo_madrid["madrid.m3u"].splitlines()[2].startswith("http://127.0.0.1:8084/"), (
-        solo_madrid["madrid.m3u"]
-    )
-    assert solo_madrid["madrid.m3u"].splitlines()[2].endswith("/index.m3u8"), solo_madrid["madrid.m3u"]
-    # Ordenada como las demás: por carpeta (aquí la categoría de cada fila), después por título.
-    assert solo_madrid["madrid.m3u"].splitlines()[1].endswith(",DAZN LaLiga"), (
-        solo_madrid["madrid.m3u"]
-    )
-    assert solo_madrid["madrid.m3u"].splitlines()[3].endswith(",DAZN LaLiga 2"), (
-        solo_madrid["madrid.m3u"]
-    )
-    # Sin partido en directo, o con el fichero ausente, la lista existe y está vacía.
-    vacia = dict((n, tx) for n, tx, _ in build_all([partido, la_liga], live={}))
-    assert vacia["madrid.m3u"] == "#EXTM3U\n", vacia["madrid.m3u"]
-    assert build_all([partido], live=load_live("/no-existe/para-el-self-test/live.json"))[-1][1] == (
-        "#EXTM3U\n"
-    )
-    # Las demás listas no cambian por el conjunto en directo: mismas filas, mismas carpetas.
-    sin = dict((n, tx) for n, tx, _ in build_all([partido, la_liga, campeon], live={}))
-    con = dict((n, tx) for n, tx, _ in build_all([partido, la_liga, campeon], live=dos_en_directo))
-    for nombre in ("acestream-suite.m3u", "espana.m3u", "direct.m3u"):
-        assert sin[nombre] == con[nombre], nombre
-    assert sin["hls.m3u"].count("#EXTINF") == con["hls.m3u"].count("#EXTINF"), "hls.m3u"
-
-    # Y el conjunto en directo en sí: una entrada caducada no da carpeta y no es un error; un fichero
-    # ausente o un documento ajeno es conjunto vacío, sin excepción.
-    assert live_entries({"format": LIVE_FORMAT, "channels": {partido["content_id"]:
-                                                              "2026-11-04T20:00:00Z"}},
-                         datetime.datetime(2026, 11, 4, 19, 0)) == {
-        partido["content_id"]: datetime.datetime(2026, 11, 4, 20, 0)
-    }
-    assert live_entries({"format": LIVE_FORMAT, "channels": {partido["content_id"]:
-                                                              "2026-11-04T20:00:00Z"}},
-                         datetime.datetime(2026, 11, 4, 20, 1)) == {}
-    # `now == stop` ya no es «en directo»: la condición es `now < stop`.
-    assert live_entries({"format": LIVE_FORMAT, "channels": {partido["content_id"]:
-                                                              "2026-11-04T20:00:00Z"}},
-                         datetime.datetime(2026, 11, 4, 20, 0)) == {}
-    assert live_entries({"format": LIVE_FORMAT, "channels": {partido["content_id"]: "sin fecha"}}) == {}
-    assert live_entries({"format": "otra-cosa", "channels": {partido["content_id"]:
-                                                              "2026-11-04T20:00:00Z"}}) == {}
-    assert live_entries({}) == {}
-    assert parse_stop("2026-11-04T20:00:00Z") == datetime.datetime(2026, 11, 4, 20, 0)
-    assert parse_stop("") is None
 
     # And every file is always produced, even when the catalog is empty.
     built = build_all([], engine="http://motor:8081/")
     assert [name for name, _, _ in built] == [
-        "acestream-suite.m3u", "deportes.m3u", "espana.m3u", "hls.m3u", "direct.m3u", "madrid.m3u"
+        "acestream-suite.m3u", "deportes.m3u", "espana.m3u", "hls.m3u", "direct.m3u"
     ], built
     assert all(text == "#EXTM3U\n" and n == 0 for _, text, n in built)
 
@@ -782,8 +559,6 @@ def parse_args(argv=None):
     parser.add_argument("--directory", default=OUTPUT_DIR, help="where to write the playlists")
     parser.add_argument("--status", default=STATUS,
                         help="availability filter, as acestream-suite's list view takes it (empty: all)")
-    parser.add_argument("--live-file", default=LIVE_FILE,
-                        help="the live set that decides the Real Madrid folder and madrid.m3u")
     parser.add_argument("--dry-run", action="store_true", help="print them, write nothing")
     parser.add_argument("--self-test", action="store_true", help="run the checks and exit")
     return parser.parse_args(argv)
@@ -808,13 +583,7 @@ def main(argv=None):
         log("cannot read the catalog from %s: %s" % (args.acestream_suite, exc))
         return 1
 
-    # S11/S12: el conjunto en directo, leido una vez por pasada. Un fichero ausente es conjunto
-    # vacio, no un error: sin partido no hay carpeta ni entradas en `madrid.m3u`, y nada mas cambia.
-    live_path = args.live_file
-    live = load_live(live_path)
-    log("%d channels in the live set from %s" % (len(live), live_path))
-
-    built = build_all(channels, args.engine, live)
+    built = build_all(channels, args.engine)
     if args.dry_run:
         for name, text, count in built:
             print("--- %s: %d channels ---" % (name, count), file=sys.stderr)

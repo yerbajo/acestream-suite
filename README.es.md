@@ -152,7 +152,7 @@ rechazarse.
 | `app/` | La aplicación web: rutas FastAPI, plantillas, ficheros estáticos, el cliente del motor, la guía y la búsqueda. |
 | `migrations/` + `alembic.ini` | El esquema de la base de datos, que `entrypoint.sh` aplica al arrancar el contenedor. |
 | `tests/` | La suite de pruebas de la aplicación (pytest, ~640 pruebas, sin red): `pytest -q` desde la raíz del repositorio. |
-| `scripts/` | Los trabajos opcionales del host: las listas, el importador del partido, la poda, sus `.cron` y `crons-install.sh`. |
+| `scripts/` | Los trabajos opcionales del host: las listas, la guía, la poda, sus `.cron` y `crons-install.sh`. |
 | `assets/` | El logotipo y el favicon que la imagen copia al directorio estático de la app. |
 
 La procedencia, y lo que significa para ti, está en `LICENSE`.
@@ -189,9 +189,8 @@ que vayas a instalar.
 
 | Script | Qué escribe |
 |---|---|
-| `acestream-suite-playlist.py` | Seis ficheros M3U en el directorio web: `acestream-suite.m3u` (todo), `deportes.m3u`, `espana.m3u`, `hls.m3u` (con una carpeta `Campeones`), `direct.m3u` (el MPEG-TS del propio motor) y `madrid.m3u` (el partido del Real Madrid en directo, vacío si no lo hay). Solo canales que la app ha verificado como vivos, una entrada por nombre visible, todas las URLs a través del puente HLS menos `direct.m3u`. Escribe solo cuando el contenido cambia. |
+| `acestream-suite-playlist.py` | Cinco ficheros M3U en el directorio web: `acestream-suite.m3u` (todo), `deportes.m3u`, `espana.m3u`, `hls.m3u` (con una carpeta `Campeones`) y `direct.m3u` (el MPEG-TS del propio motor). Solo canales que la app ha verificado como vivos, una entrada por nombre visible, todas las URLs a través del puente HLS menos `direct.m3u`. Escribe solo cuando el contenido cambia. |
 | `acestream-suite-guide-playlist.py` | `acestream-suite-guide.m3u`: el mismo catálogo con `url-tvg` en la cabecera y el id de canal de la guía como `tvg-id`, en los canales que lo tienen. |
-| `acestream-suite-partido.py` | Importa al catálogo los canales que emiten un partido del Real Madrid, en directo (categoría `Real Madrid`); escribe el conjunto en directo en `/var/lib/acestream-suite-partido/live.json` y su propio estado en `state.json`, que lee el script de las listas. |
 | `acestream-suite-prune.py` | Una limpieza de una sola vez: espera a que todos los canales estén comprobados, respalda en `/backup/…/<stamp>/` (listas, exportación reimportable del catálogo, copia de la base de datos, lista de lo que va a borrar) y después borra los canales cuya última comprobación no fue `alive`, a través de la propia API de la app. Se marca como hecho; `--undo-guard` le deja volver a correr. |
 | `crons-install.sh` | El crontab de root en el host de destino, generado a partir de `scripts/*.cron`. `--dry-run` imprime, `--diff` compara con el crontab vivo, `--install` respalda y escribe. Su array `JOBS` lleva también trabajos de otras pilas — léelo antes de instalar. |
 
@@ -219,8 +218,14 @@ aquí. La imagen instala además software de terceros: `python:3.12-slim`, los p
 
 ## Cómo se despliega aquí
 
-Un despliegue doméstico tiene esta forma: un host en la LAN, un contenedor
-al lado de un motor tunelizado por WireGuard en otra máquina, un proxy inverso sirviendo un directorio
-de listas, y trabajos de cron en el host. Léelos como un ejemplo trabajado con las mediciones que lo
-respaldan, no como la única forma de ejecutar esto — el fichero compose es la interfaz, y las
-variables de entorno de arriba son las palancas.
+**Este repositorio es la suite, no el motor.** El motor AceStream es una dependencia a la que apuntas:
+sirve cualquiera cuyo API HTTP alcance el contenedor, y dónde corra el motor de cada casa —otra
+máquina, dentro de una VPN, detrás de un proxy— queda fuera de este repositorio y le da igual a la
+suite. Solo se asume que la URL de `ACESTREAM_SUITE_ENGINE_URL` responde.
+
+Lo que sí describe este repositorio es un despliegue pequeño y corriente: un host con
+`docker compose up -d`, sus valores en `.env`, un servidor web o proxy inverso publicando el directorio
+donde escribe el script de las listas y —si quieres que las listas y la guía se refresquen con
+horario— los trabajos de cron de arriba. El compose es la interfaz, las variables de entorno son las
+palancas y los scripts de `scripts/` son ayudas opcionales que puedes leer, ejecutar a mano o
+programar.

@@ -47,14 +47,9 @@ EXTRA_SOURCE_DIR="${CRONS_EXTRA_SOURCE_DIR:-$REPO_ROOT/../suite-aar/finanzas}"
 # generated crontab was two jobs short of the live one and the guide's list and refresh had no
 # schedule.
 #
-# acestream-suite-partido comes next to acestream-suite-playlist since 2026-11-04: it imports the
-# channels of a Real Madrid match while it is on air and writes the live set both the `Real Madrid`
-# folder and madrid.m3u come from. It is the third job of the lists and it reads the guide the first
-# two publish, so a missing entry here would leave the folder without its source.
-#
-# The five leading jobs belong to acestream-suite: since the 2026-11-04 rename their scripts, their
+# The four leading jobs belong to acestream-suite: since the 2026-11-04 rename their scripts, their
 # .cron files and the binaries they run carry that prefix (`/usr/local/bin/acestream-suite-*`).
-JOBS=(acestream-suite-playlist acestream-suite-partido acestream-suite-prune \
+JOBS=(acestream-suite-playlist acestream-suite-prune \
       acestream-suite-guide-playlist acestream-suite-guide-refresh \
       db-backup finanzas-backup frankmd-backup gitea-backup \
       homepage-backup immich-backup infra-inventory-backup linkwarden-backup nextcloud-backup \
