@@ -55,7 +55,7 @@ RUN set -eux; \
 # Los ficheros que no son texto —el favicon y el logotipo— no viajan en un parche: `diff` solo sabe
 # decir «los archivos binarios son distintos», y `patch` no puede crearlos. Van por COPY, después de
 # los parches para que ganen a lo que traiga el código de arriba.
-COPY assets/favicon.ico assets/logo-3d-wordmark.png /app/app/web/static/
+COPY assets/favicon.ico assets/logo-wordmark.png /app/app/web/static/
 
 # Editable on purpose. The app reads its templates, its static files AND `alembic.ini` +
 # `migrations/` relative to the `app` package's parent (`app/config.py:ROOT_DIR`, via

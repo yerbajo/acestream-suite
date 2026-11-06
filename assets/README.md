@@ -11,8 +11,8 @@ keeps its own name and its own mark — that is why the official AceStream icon 
 | File | What it is |
 |---|---|
 | `ace-stream-mark.svg` | The official AceStream application icon, exactly as it was copied. 192 × 192 Inkscape document. **Provenance copy**: nothing references it, do not edit it. |
-| `logo-3d.png` | **What the README shows and the app's header uses.** The owner's 3D artwork (1536 × 1024, supplied on 2026-11-05), scaled to 1200 × 800 for the web. |
-| `logo-3d-wordmark.png` | The wordmark band cropped out of that artwork (640 × 97, about 6.6 : 1). This is what goes in the app's header at 38 px: the full drawing is unreadable at that size, the band is not. |
+| `logo-3d.png` | **What the README shows, centred.** The owner's 3D artwork (1536 × 1024, supplied on 2026-11-05), scaled to 1200 × 800 for the web. |
+| `logo-wordmark.png` | **What the app's header uses.** The owner's futurist wordmark plate (`Logotipo futurista AceStream Suite.png`, 2138 × 735, supplied on 2026-11-06), cropped to the plate's ink and scaled to 640 × 103 (about 6.2 : 1), so it reads at 38 px in the top bar. |
 | `favicon.ico` | Multi-size icon (16/32/48/64) for the app and the browser tab, built from `favicon-64.png`. Copied into the image by the `Dockerfile`, because a binary cannot travel in a patch. |
 | `logo.svg` | The flat lockup: the official mark plus the wordmark, kept for use at large sizes. Self-contained, `viewBox="0 0 11399.6 2919"` (about 3.9 : 1), no `width`/`height`, so it scales from CSS. |
 | `logo-mark.svg` | Square, mark-only variant for the favicon: the official mark on a near-black rounded plate, `viewBox="0 0 256 256"`. Reads at 64 px and at 32 px. |
@@ -32,9 +32,9 @@ on a machine that has no fonts installed.
   Fetched on 2026-11-05 with `curl -sL` while preparing this rename; the copy kept beside this file as
   `ace-stream-mark.svg` is that download, 4426 bytes.
 
-`logo-3d.png` and `logo-3d-wordmark.png` are the owner's own artwork, supplied as
-`Logotipo aceStream Suite en 3D.png`; they are not derived from the official icon and carry no
-separate licence question beyond the trademark note below.
+`logo-3d.png` and `logo-wordmark.png` are the owner's own artwork, supplied as
+`Logotipo aceStream Suite en 3D.png` and `Logotipo futurista AceStream Suite.png`; they are not
+derived from the official icon and carry no licence question beyond the trademark note below.
 
 The mark's own shapes, coordinates and colours are used as they came: `logo.svg` and `logo-mark.svg`
 inline the same path data as `ace-stream-mark.svg`. The only thing dropped is the three blurred

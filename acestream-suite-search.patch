@@ -1039,7 +1039,7 @@
 +.play-slot:empty { display: none; }
 +.play-slot:not(:empty) { margin-top: 6px; font-size: 12px; }
 --- a/app/web/templates/base.html	2026-11-05 20:32:14.033123541 +0100
-+++ b/app/web/templates/base.html	2026-11-05 22:40:22.691854250 +0100
++++ b/app/web/templates/base.html	2026-11-06 07:17:12.155060415 +0100
 @@ -5,20 +5,26 @@
    <meta name="viewport" content="width=device-width, initial-scale=1">
    {# 422 is a rejected form and 503 a missing player or engine: htmx must show them. #}
@@ -1058,8 +1058,8 @@
 -    <a class="brand" href="{{ url_for('channel_list') }}">AceList</a>
 +    {# El logotipo lleva el nombre dentro, así que el `alt` es el nombre: nada de texto duplicado. #}
 +    <a class="brand" href="{{ url_for('channel_list') }}">
-+      <img class="brand-logo" src="{{ static_url(request, 'logo-3d-wordmark.png') }}"
-+           alt="acestream-suite" width="640" height="97">
++      <img class="brand-logo" src="{{ static_url(request, 'logo-wordmark.png') }}"
++           alt="acestream-suite" width="640" height="103">
 +    </a>
      <nav>
        <a href="{{ url_for('channel_list') }}">Canales</a>
@@ -1608,7 +1608,7 @@
 -    assert "No se pudo iniciar AceList: no hay puertos libres" in capsys.readouterr().out
 +    assert "No se pudo iniciar acestream-suite: no hay puertos libres" in capsys.readouterr().out
 --- a/tests/test_packaging.py	2026-10-08 21:43:53.000000000 +0200
-+++ b/tests/test_packaging.py	2026-11-05 22:40:22.692881687 +0100
++++ b/tests/test_packaging.py	2026-11-06 07:17:12.155221680 +0100
 @@ -51,5 +51,18 @@
  def test_pages_use_the_favicon(web):
      page = web.get("/").text
@@ -1625,7 +1625,7 @@
 +    for path in ("/", "/import", "/settings", "/search"):
 +        page = web.get(path).text
 +        assert 'class="brand-logo"' in page, path
-+        assert "/static/logo-3d-wordmark.png" in page, path
++        assert "/static/logo-wordmark.png" in page, path
 +        # El nombre va en el `alt` del logotipo; lo que no puede aparecer es el nombre viejo.
 +        assert 'alt="acestream-suite"' in page, path
 +        assert "AceList" not in page, path

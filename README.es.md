@@ -2,7 +2,7 @@
 
 [English](README.md) · **Español**
 
-<img src="assets/logo-3d.png" alt="acestream-suite" width="560">
+<p align="center"><img src="assets/logo-3d.png" alt="acestream-suite" width="560"></p>
 
 Un front end web autoalojado para un motor **AceStream**. Mantiene un catálogo de enlaces
 `acestream://` — canales con su Content ID, una comprobación de disponibilidad contra el motor, una
