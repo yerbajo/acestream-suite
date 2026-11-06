@@ -54,21 +54,16 @@ Dos detalles que se echan de menos si se saltan:
   **Ajustes** de la app, y un valor guardado manda sobre el entorno — así que un `.env` equivocado se
   corrige desde la interfaz sin reconstruir nada.
 
-## La imagen se construye en local, a propósito
+## La imagen se construye en local, desde este repositorio
 
-`docker compose up -d --build` **construye** la imagen; no se descarga nada. La base de aguas arriba
-— el proyecto **AceList** — no publica ninguna imagen (su única forma soportada de ejecutarse es el
-ejecutable de Windows), así que no hay nada que descargar.
+`docker compose up -d --build` **construye** la imagen; no se descarga nada salvo la base
+`python:3.12-slim` y los paquetes de la distribución. El código de la aplicación está aquí: `app/`
+(la aplicación FastAPI), `migrations/` (Alembic) y `pyproject.toml`, que se copian a la imagen y se
+instalan en modo editable, porque la app lee sus plantillas, sus ficheros estáticos y sus migraciones
+relativas al árbol de código.
 
-La construcción toma el **tarball** de la release de aguas arriba, no un clon de git ni una etiqueta
-móvil: el `Dockerfile` fija la release por versión **y** por sha256 (`ACELIST_VERSION=1.3.0`,
-`ACELIST_SHA256=487bee2f…72d879`), verifica la descarga contra él y solo entonces aplica los tres
-parches de este proyecto. `ffmpeg` se instala en la imagen porque las capturas y la comprobación de
-disponibilidad leen el stream en directo a través de él.
-
-Esos dos argumentos de construcción `ACELIST_*` son el nombre de la *base de aguas arriba*, no el de
-este producto, y van a la par de las etiquetas de release de aguas arriba a propósito: subir de
-versión significa subirlos y releer los tres parches contra el código nuevo.
+`ffmpeg` se instala en la imagen porque las capturas y la comprobación de disponibilidad leen el
+stream en directo a través de él.
 
 Actualizar:
 
@@ -77,8 +72,8 @@ git pull
 docker compose build acestream-suite && docker compose up -d acestream-suite
 ```
 
-Nombrar el servicio importa: el mismo fichero compose contiene también el puente
-`acestream-suite-hls`, y un `docker compose up -d` sin argumentos lo recrearía a él también.
+Nombrar el servicio importa: el mismo compose también tiene el puente `acestream-suite-hls`, y un
+`docker compose up -d` a secas lo recrearía también.
 
 ## Configuración
 
@@ -98,7 +93,7 @@ que aún no se ha renombrado sigue funcionando (si están las dos, gana la nueva
 | `ACESTREAM_SUITE_SCREENSHOT_TIMEOUT` | `30` | Segundos permitidos para la captura con ffmpeg. |
 | `ACESTREAM_SUITE_FFMPEG_PATH` | vacío = `ffmpeg` en el `PATH` | El binario que se usa para las capturas. |
 | `ACESTREAM_SUITE_VLC_PATH` | vacío = carpetas habituales, luego `PATH` | Solo se lee en el modo de reproducción `vlc`. |
-| `ACESTREAM_SUITE_DATA_DIR` | `/data` en la imagen, el directorio de datos del sistema en otro sitio | Dónde viven `acelist.db` y `screenshots/`. |
+| `ACESTREAM_SUITE_DATA_DIR` | `/data` en la imagen, el directorio de datos del sistema en otro sitio | Dónde viven `acestream-suite.db` y `screenshots/`. |
 | `ACESTREAM_SUITE_PORT` | `8000` | Puerto que la app ocupa **dentro** del contenedor. El puerto publicado lo decide `ports:` en el fichero compose. |
 | `ACESTREAM_SUITE_EPG_SOURCES` | `[]` | Fuentes XMLTV, como lista JSON de URLs. Vacío es un estado soportado: el catálogo funciona sin guía. |
 | `ACESTREAM_SUITE_EPG_WINDOW_HOURS` | `72` | Cuánto por delante de *ahora* se guarda la guía; los programas más viejos se podan en cada refresco. |
@@ -121,8 +116,8 @@ Dos notas:
   `ACESTREAM_SUITE_EPG_REFRESH_HOURS`. Está ahí para que el intervalo del refresco se decida en el
   despliegue; el horario en sí vive en `scripts/acestream-suite-guide-refresh.cron`, que hay que
   mantener en paso con ella a mano.
-- El fichero de base de datos conserva el nombre `acelist.db`. Está dentro del directorio de datos al
-  que se apunta la app; el nombre no es configuración y no sigue el renombrado del producto.
+- El fichero de base de datos es `acestream-suite.db`, dentro del directorio de datos al que se apunta
+  la app.
 
 ## Datos y copias de seguridad
 
@@ -131,7 +126,7 @@ fichero compose:
 
 ```
 data/
-  acelist.db      SQLite: catálogo, historial de comprobaciones, tablas de la guía, ajustes
+  acestream-suite.db   SQLite: catálogo, historial de comprobaciones, tablas de la guía, ajustes
   screenshots/    una captura por canal
 ```
 
@@ -151,31 +146,18 @@ Para restaurar: para la app, sustituye `data/`, arráncala. El entrypoint aplica
 base de datos al arrancar, así que una copia de una versión anterior se actualiza en vez de
 rechazarse.
 
-## Los tres parches
+## Cómo se organiza el código
 
-La app no está bifurcada: aguas arriba sigue siendo aguas arriba. Todo lo que cambia este proyecto es
-un diff que se aplica al construir, en este orden, cada uno leído contra el mismo tarball fijado.
-
-| Parche | Qué añade |
+| Ruta | Qué es |
 |---|---|
-| `acestream-suite-lan.patch` | Alcance en la LAN y reproducción: la lista de hosts permitidos que usan tanto la comprobación de `Host` como la de origen CSRF, el modo de reproducción `url` que funciona en un host sin reproductor, y el dialecto `infohash` del motor. |
-| `acestream-suite-guide.patch` | La guía: tablas y migraciones XMLTV, el comando de refresco, `/epg.xml` y `/epg.json`, la celda ahora/siguiente y la parrilla, y las pantallas del mapeo canal↔guía. |
-| `acestream-suite-search.patch` | La página de búsqueda sobre `acesearch` y su ajuste — además de los nombres `ACESTREAM_SUITE_*` con el respaldo `ACELIST_*`. |
+| `app/` | La aplicación web: rutas FastAPI, plantillas, ficheros estáticos, el cliente del motor, la guía y la búsqueda. |
+| `migrations/` + `alembic.ini` | El esquema de la base de datos, que `entrypoint.sh` aplica al arrancar el contenedor. |
+| `tests/` | La suite de pruebas de la aplicación (pytest, ~640 pruebas, sin red): `pytest -q` desde la raíz del repositorio. |
+| `scripts/` | Los trabajos opcionales del host: las listas, el importador del partido, la poda, sus `.cron` y `crons-install.sh`. |
+| `assets/` | El logotipo y el favicon que la imagen copia al directorio estático de la app. |
+| `docs/` | Las guías del operador, inglés canónico con espejo en español. |
 
-`build-patch.sh` los regenera. Construye los árboles entre los que se toman los diffs — `$WORK/base`
-(el tarball fijado más el parche de LAN), `$WORK/epg` (aquí es donde se edita), `$WORK/search` —, lee
-la versión y el sha256 del `Dockerfile`, para que la fijación viva en un solo sitio, y se niega a
-sobrescribir un árbol que estás editando:
-
-```bash
-./build-patch.sh --help                    # las opciones, y el razonamiento, completos
-./build-patch.sh --prepare                 # construye/actualiza los árboles (por defecto)
-./build-patch.sh --generate                # reescribe el parche de la guía desde base vs epg
-./build-patch.sh --generate-search         # reescribe el parche de búsqueda desde epg vs search
-```
-
-Necesita `patch`, `curl` y `sha256sum`, y `--tarball FILE` reutiliza un tarball que ya tengas (el
-checksum se verifica igualmente).
+La procedencia, y lo que significa para ti, está en `NOTICE.md`.
 
 ## El puente HLS
 
@@ -231,11 +213,11 @@ contenedor (`docker exec acestream-suite python3 -m app.cli epg-refresh`).
 
 ## Licencia y avisos de terceros
 
-El trabajo propio de este repositorio — los ficheros de despliegue, los tres parches, los scripts, la
-documentación y el logotipo — tiene licencia MIT; ver `LICENSE`. La base de aguas arriba con la que se
-construye la imagen **no** se redistribuye aquí: el `Dockerfile` la descarga al construir, y no trae
-licencia propia. Los avisos de terceros, incluido el origen de la marca de AceStream dentro del
-logotipo y las licencias del software que instala la imagen, están en `NOTICE.md`.
+El trabajo propio de este repositorio — los ficheros de despliegue, los scripts, la documentación, el
+logotipo y el código de la aplicación — tiene licencia MIT; ver `LICENSE`. La aplicación nació del
+proyecto **AceList**, que no publica licencia, y `NOTICE.md` deja constancia de esa procedencia, de la
+marca de AceStream dentro del logotipo y de las licencias del software que instala la imagen. Léelo
+antes de redistribuir una imagen construida desde este repositorio.
 
 ## Cómo se despliega aquí
 

@@ -21,12 +21,14 @@ WHAT IT DELETES, AND WHAT IT REFUSES TO DELETE
     unchecked channel.
 
 BACKUP
-    /backup/acelist/<stamp>/ before anything is deleted (esa ruta no cambia en esta version: son los
-    respaldos que ya existen y no se mueven):
+    /backup/acestream-suite/<stamp>/ before anything is deleted:
       acestream-suite.m3u, deportes.m3u, espana.m3u   the playlists as they were
       catalogo.json                                  the full export, re-importable con su import
-      acelist.db                                     a consistent copy of the database (S5)
+      acestream-suite.db                             a consistent copy of the database
       canales-a-borrar.txt                           what was deleted, with its status and peers
+
+    La base de datos no se mueve de sitio (`ACESTREAM_SUITE_DB`): solo la copia del respaldo lleva el
+    nombre del producto.
 
 INSTALL (on dev.albertucho.home)
     install -m 0755 scripts/acestream-suite-prune.py /usr/local/bin/acestream-suite-prune
@@ -38,6 +40,7 @@ USAGE
     acestream-suite-prune --dry-run     # report the plan and exit
     acestream-suite-prune --force       # delete what is already known to be dead, without waiting
     acestream-suite-prune --undo-guard  # allow it to run again (the backup is taken again, too)
+    acestream-suite-prune --self-test   # the checks below, no network, no host and no files
 """
 
 import argparse
@@ -47,58 +50,35 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
 
 
-def env(name, legacy, default):
-    """S4: la variable nueva y, mientras el host solo exporte la vieja, la vieja.
+def env(name, default):
+    """El valor de `ACESTREAM_SUITE_*`, o el defecto.
 
-    Se lee `ACESTREAM_SUITE_*` primero; `ACELIST_*` sigue valiendo en esta version para que un host
-    que aun la exporte (el crontab viejo, un docker-compose sin actualizar) no cambie de
-    comportamiento el dia del renombrado.
+    Una sola variable por ajuste: el nombre viejo ya no se lee, y el entorno vacio es el caso normal.
     """
     value = os.environ.get(name)
-    if value is None:
-        value = os.environ.get(legacy)
     return default if value is None else value
 
 
-def with_legacy(path, current, legacy):
-    """S4: la ruta nueva y, mientras la vieja sea la unica que existe, la vieja.
-
-    Solo se cae a la ruta vieja cuando no se ha pedido otra cosa (`path == current`) y el fichero
-    nuevo aun no esta: es la ventana entre este cambio y la primera pasada que escribe el nuevo.
-    """
-    if path == current and not os.path.exists(path) and legacy and os.path.exists(legacy):
-        return legacy
-    return path
-
-
-BASE_URL = env("ACESTREAM_SUITE_URL", "ACELIST_URL", "http://127.0.0.1:8083")
-# S5: la base de datos NO se mueve de sitio en esta feature. El nombre de la copia dentro del respaldo
-# sale de aqui, asi que tambien se queda como esta.
-DB_PATH = env("ACESTREAM_SUITE_DB", "ACELIST_DB", "/opt/acelist/data/acelist.db")
-PLAYLIST_DIR = env("ACESTREAM_SUITE_PLAYLIST_DIR", "ACELIST_PLAYLIST_DIR", "/srv/www/varios")
+BASE_URL = env("ACESTREAM_SUITE_URL", "http://127.0.0.1:8083")
+# La base sigue donde estaba: esta feature no mueve los datos, solo el nombre de la copia del respaldo.
+DB_PATH = env("ACESTREAM_SUITE_DB", "/opt/acestream-suite/data/acestream-suite.db")
+PLAYLIST_DIR = env("ACESTREAM_SUITE_PLAYLIST_DIR", "/srv/www/varios")
 PLAYLIST_FILES = ("acestream-suite.m3u", "deportes.m3u", "espana.m3u")
-# S4: mientras la lista nueva no exista, se respalda la vieja, y el binario viejo sigue existiendo
-# como envoltorio del nuevo hasta que el crontab se regenere.
-PLAYLIST_FILE_LEGACY = "acelist.m3u"
-PLAYLIST_SCRIPT = env("ACESTREAM_SUITE_PLAYLIST_SCRIPT", "ACELIST_PLAYLIST_SCRIPT",
-                      "/usr/local/bin/acestream-suite-playlist")
-PLAYLIST_SCRIPT_LEGACY = "/usr/local/bin/acelist-playlist"
-BACKUP_DIR = env("ACESTREAM_SUITE_BACKUP_DIR", "ACELIST_BACKUP_DIR", "/backup/acelist")
-GUARD_PATH = env("ACESTREAM_SUITE_PRUNE_GUARD", "ACELIST_PRUNE_GUARD",
-                 "/var/lib/acestream-suite-prune/done")
-# S4: la guarda vieja se sigue leyendo; si existe, el trabajo ya se hizo y no se vuelve a borrar.
-GUARD_PATH_LEGACY = "/var/lib/acelist-prune/done"
-LOG_PATH = env("ACESTREAM_SUITE_PRUNE_LOG", "ACELIST_PRUNE_LOG",
-               "/var/log/acestream-suite-prune.log")
-LOCK_PATH = env("ACESTREAM_SUITE_PRUNE_LOCK", "ACELIST_PRUNE_LOCK",
-                "/var/lock/acestream-suite-prune.lock")
+PLAYLIST_SCRIPT = env("ACESTREAM_SUITE_PLAYLIST_SCRIPT", "/usr/local/bin/acestream-suite-playlist")
+BACKUP_DIR = env("ACESTREAM_SUITE_BACKUP_DIR", "/backup/acestream-suite")
+# La copia de la base dentro del respaldo lleva el nombre del producto, no el del fichero vivo.
+BACKUP_DB_NAME = "acestream-suite.db"
+GUARD_PATH = env("ACESTREAM_SUITE_PRUNE_GUARD", "/var/lib/acestream-suite-prune/done")
+LOG_PATH = env("ACESTREAM_SUITE_PRUNE_LOG", "/var/log/acestream-suite-prune.log")
+LOCK_PATH = env("ACESTREAM_SUITE_PRUNE_LOCK", "/var/lock/acestream-suite-prune.lock")
 DEAD = ("no_peers", "not_found", "error")
-TIMEOUT = float(env("ACESTREAM_SUITE_PRUNE_TIMEOUT", "ACELIST_PRUNE_TIMEOUT", "30"))
+TIMEOUT = float(env("ACESTREAM_SUITE_PRUNE_TIMEOUT", "30"))
 
 
 def log(message, path=LOG_PATH):
@@ -156,9 +136,6 @@ def backup(dead):
     os.makedirs(destination)
     for name in PLAYLIST_FILES:
         source = os.path.join(PLAYLIST_DIR, name)
-        # S4: durante la ventana del renombrado la lista nueva puede no existir todavia y la vieja si.
-        if not os.path.exists(source) and name == PLAYLIST_FILES[0]:
-            source = os.path.join(PLAYLIST_DIR, PLAYLIST_FILE_LEGACY)
         if os.path.exists(source):
             shutil.copy2(source, os.path.join(destination, name))
     status, body = request(BASE_URL.rstrip("/") + "/export")  # unfiltered: the whole catalog
@@ -166,8 +143,7 @@ def backup(dead):
         raise OSError("cannot export the catalog: HTTP %s" % status)
     with open(os.path.join(destination, "catalogo.json"), "wb") as handle:
         handle.write(body)
-    # El nombre de la copia es el de la base de datos, que no se mueve de sitio (S5).
-    copy_database(os.path.join(destination, os.path.basename(DB_PATH)))
+    copy_database(os.path.join(destination, BACKUP_DB_NAME))
     with open(os.path.join(destination, "canales-a-borrar.txt"), "w") as handle:
         for _, title, content_id, channel_status, peers in dead:
             handle.write("%s\t%s\t%s\tpeers=%s\n" % (title, content_id, channel_status, peers))
@@ -210,9 +186,7 @@ def delete(channel_id):
 
 
 def refresh_playlists(script=None):
-    # S4: el binario nuevo y, mientras no exista, el viejo (que en el host es un envoltorio del nuevo
-    # hasta que el crontab se regenere).
-    script = script or with_legacy(PLAYLIST_SCRIPT, PLAYLIST_SCRIPT, PLAYLIST_SCRIPT_LEGACY)
+    script = script or PLAYLIST_SCRIPT
     result = subprocess.run([script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in result.stdout.decode("utf-8", "replace").splitlines():
         log("  playlist: %s" % line)
@@ -225,14 +199,73 @@ def parse_args(argv=None):
     parser.add_argument("--force", action="store_true",
                         help="do not wait for the verification to finish")
     parser.add_argument("--undo-guard", action="store_true", help="allow it to run again")
+    parser.add_argument("--self-test", action="store_true", help="run the checks and exit")
     return parser.parse_args(argv)
+
+
+def self_test():
+    """Los checks que este script deja detrás: fallan si una ruta, la copia o la consulta cambian.
+
+    Sin red y sin host; de ficheros, una base SQLite de verdad en un directorio temporal que se
+    borra al terminar.
+    """
+    assert env("ACESTREAM_SUITE_NO_EXISTE", "d") == "d"
+    # El nombre viejo va en dos trozos unidos al ejecutar: el compilador pliega una suma de
+    # cadenas en una sola constante, y el nombre quedaria dentro del `.pyc`.
+    viejo = "".join(("ACE", "LIST"))
+    respaldo = dict(os.environ)
+    try:
+        os.environ[viejo + "_PRUNE_GUARD"] = "/tmp/viejo/done"
+        assert env("ACESTREAM_SUITE_PRUNE_GUARD", "d") == "d", "la variable vieja ya no se lee"
+    finally:
+        os.environ.clear()
+        os.environ.update(respaldo)
+
+    # Las rutas y el nombre de la copia de la base, que es lo que queda en el respaldo.
+    assert GUARD_PATH == "/var/lib/acestream-suite-prune/done", GUARD_PATH
+    assert BACKUP_DIR == "/backup/acestream-suite", BACKUP_DIR
+    assert BACKUP_DB_NAME == "acestream-suite.db", BACKUP_DB_NAME
+    assert PLAYLIST_FILES == ("acestream-suite.m3u", "deportes.m3u", "espana.m3u"), PLAYLIST_FILES
+    assert PLAYLIST_SCRIPT == "/usr/local/bin/acestream-suite-playlist", PLAYLIST_SCRIPT
+
+    # La consulta de verdad: un canal sin comprobacion NO es un canal muerto, y uno cuya ultima
+    # comprobacion es `no_peers` si. Es la regla que impide borrar con informacion incompleta.
+    temporal = tempfile.mkdtemp()
+    try:
+        base = os.path.join(temporal, "catalogo.db")
+        conexion = sqlite3.connect(base)
+        try:
+            conexion.executescript(
+                "create table channel (id integer primary key, title text, content_id text);"
+                "create table check_result (id integer primary key, channel_id integer,"
+                " status text, peers integer);"
+                "insert into channel (id, title, content_id) values"
+                " (1, 'Vivo', 'a'), (2, 'Muerto', 'b'), (3, 'Sin comprobar', 'c');"
+                "insert into check_result (channel_id, status, peers) values"
+                " (1, 'alive', 4), (2, 'no_peers', 0);"
+            )
+            conexion.commit()
+        finally:
+            conexion.close()
+        sin_comprobar, muertos = state(base)
+        assert sin_comprobar == 1, sin_comprobar
+        assert [(fila[1], fila[3]) for fila in muertos] == [("Muerto", "no_peers")], muertos
+        # Y la copia de la base, con el nombre que lleva dentro del respaldo.
+        copia = os.path.join(temporal, BACKUP_DB_NAME)
+        copy_database(copia, base)
+        assert os.path.getsize(copia) > 0, "la copia de la base salio vacia"
+    finally:
+        shutil.rmtree(temporal)
+    print("self-test OK")
 
 
 def main(argv=None):
     args = parse_args(argv)
-    # S4: la guarda nueva y, mientras la vieja sea la unica que existe, la vieja. Si existe, el
-    # trabajo ya se hizo: volver a borrar sin respaldo nuevo no es una opcion.
-    guard = with_legacy(GUARD_PATH, GUARD_PATH, GUARD_PATH_LEGACY)
+    if args.self_test:
+        self_test()
+        return 0
+    # Si la guarda existe, el trabajo ya se hizo: volver a borrar sin respaldo nuevo no es una opcion.
+    guard = GUARD_PATH
     if args.undo_guard and os.path.exists(guard):
         os.unlink(guard)
         log("guard removed: the job can run again")

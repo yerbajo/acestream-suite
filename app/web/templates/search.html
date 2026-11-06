@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{# Los mismos macros que las otras páginas con formulario, atados a `errors` como en `import.html`:
+   sin ellos, una búsqueda con un error de categoría rompía la página entera (500). #}
+{% macro field_error(name) %}
+  {% if errors[name] %}<p class="field-error" id="{{ name }}-error">{{ errors[name] }}</p>{% endif %}
+{% endmacro %}
+
+{% macro invalid(name) %}{% if errors[name] %} aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}{% endmacro %}
+
+{% block title %}Buscar · acestream-suite{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <h1>Buscar</h1>
+  <div class="actions">
+    <a class="button" href="{{ url_for('import_page') }}">Importar enlaces</a>
+  </div>
+</div>
+
+<p class="hint">Busca en <code>acesearch</code>, el índice del motor, por <strong>nombre de canal</strong>
+(no por partido). Lo que sale no está en el catálogo todavía.</p>
+
+<form class="filters" method="get" action="{{ url_for('search_page') }}" role="search">
+  <div class="field field-search">
+    <label for="q">Canal</label>
+    <input id="q" name="q" type="search" value="{{ query }}" placeholder="dazn, movistar, euroliga…" autofocus>
+  </div>
+  <div class="filter-actions">
+    <button class="button primary" type="submit">Buscar</button>
+  </div>
+</form>
+
+{% if problem %}
+<p class="notice notice-error" role="alert">{{ problem }}</p>
+{% endif %}
+{% if errors.pick %}
+<p class="notice notice-error" role="alert">{{ errors.pick }}</p>
+{% endif %}
+
+{% if result %}
+<p class="notice notice-ok" role="status">
+  {{ result.created|length }} canal(es) añadidos, {{ result.duplicates|length }} duplicados y
+  {{ result.invalid|length }} inválidos.
+</p>
+{% if engine_down %}
+<p class="notice notice-error" role="alert">El engine no responde: el alta está hecha y las comprobaciones quedan pendientes.</p>
+{% endif %}
+{% endif %}
+
+{% if hits %}
+<p class="result-count">{{ hits|length }} resultado(s) para «{{ query }}»</p>
+<form method="post" action="{{ url_for('search_add') }}">
+  <input type="hidden" name="query" value="{{ query }}">
+  <div class="table-wrap">
+    <table class="channels">
+      <caption class="visually-hidden">Resultados para «{{ query }}». Marca los canales que quieras añadir al catálogo.</caption>
+      <thead>
+        <tr>
+          <th scope="col"><span class="visually-hidden">Añadir</span></th>
+          <th scope="col">Canal</th>
+          <th scope="col" class="num">Bitrate</th>
+          <th scope="col" class="num">Disponible</th>
+          <th scope="col" class="num">Pares</th>
+          <th scope="col">Etiquetas</th>
+          <th scope="col">Hash</th>
+          <th scope="col"><span class="visually-hidden">Reproducir</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for hit in hits %}
+        <tr>
+          {#- El enlace va delante: el importador lee como comentario cualquier línea que empiece por
+              `#`, y hay canales del índice que se llaman así (`#VAMOS FHD --> NEW ERA`). -#}
+          <td><input type="checkbox" name="pick"
+                     value="acestream://{{ hit.content_id }} | {{ hit.name }}"
+                     aria-label="Añadir {{ hit.name }} al catálogo"></td>
+          <td class="title">{{ hit.name }}</td>
+          <td class="num">{{ hit.bitrate_text }}</td>
+          <td class="num">{{ hit.availability_text }}</td>
+          <td class="num">
+            {% set checked = known.get(hit.content_id) %}
+            <div id="peers-{{ loop.index }}">
+              {%- if checked -%}
+                <strong>{{ checked.peers if checked.peers is not none else "—" }}</strong> pares
+                <span class="hint">{{ checked.checked_at|ago }}</span>
+              {%- else -%}
+                <span class="hint">sin dato</span>
+              {%- endif -%}
+            </div>
+            <button type="button" class="button"
+                    hx-post="{{ url_for('search_peers') }}"
+                    hx-vals='{"content_id": "{{ hit.content_id }}"}'
+                    hx-target="#peers-{{ loop.index }}" hx-swap="innerHTML">Medir</button>
+          </td>
+          <td>{{ hit.tags_text }}</td>
+          <td><code>{{ hit.content_id[:12] }}…</code></td>
+          <td>
+            <button type="button" class="button"
+                    hx-post="{{ url_for('search_play') }}"
+                    hx-vals='{"content_id": "{{ hit.content_id }}"}'
+                    hx-target="#play-{{ loop.index }}" hx-swap="innerHTML">Reproducir</button>
+            <div id="play-{{ loop.index }}" class="play-slot" aria-live="polite"></div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <fieldset class="search-add">
+    <legend>Añadir los marcados</legend>
+    <div class="field-row">
+      <div class="field">
+        <label for="category_id">Categoría</label>
+        <select id="category_id" name="category_id"{{ invalid("category_id") }}>
+          <option value="">Sin categoría</option>
+          {% for category in categories %}
+          <option value="{{ category.id }}"{% if values.category_id == category.id|string %} selected{% endif %}>{{ category.name }}</option>
+          {% endfor %}
+        </select>
+        {{ field_error("category_id") }}
+      </div>
+      <div class="field">
+        <label for="new_category">…o una categoría nueva</label>
+        <input id="new_category" name="new_category" type="text" value="{{ values.new_category }}"{{ invalid("new_category") }}>
+        {{ field_error("new_category") }}
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label for="language">Idioma</label>
+        <select id="language" name="language"{{ invalid("language") }}>
+          <option value="">Sin idioma</option>
+          {% for code, name in language_choices() %}
+          <option value="{{ code }}"{% if (values.language or '')|lower == code %} selected{% endif %}>{{ name }} ({{ code }})</option>
+          {% endfor %}
+        </select>
+        {{ field_error("language") }}
+      </div>
+      <div class="field">
+        <label for="country">País</label>
+        <select id="country" name="country"{{ invalid("country") }}>
+          <option value="">Sin país</option>
+          {% for code, name in country_choices() %}
+          <option value="{{ code }}"{% if (values.country or '')|upper == code %} selected{% endif %}>{{ name }} ({{ code }})</option>
+          {% endfor %}
+        </select>
+        {{ field_error("country") }}
+      </div>
+    </div>
+    <div class="actions">
+      <button type="submit" class="button primary">Añadir al catálogo</button>
+      <p class="hint">Se verifican en segundo plano, como cualquier alta.</p>
+    </div>
+  </fieldset>
+</form>
+{% elif query and not problem %}
+<p class="notice">La búsqueda no devolvió nada para «{{ query }}». Prueba con el nombre del canal
+(<code>dazn</code>, <code>movistar</code>, <code>euroliga</code>), no con el del partido.</p>
+{% endif %}
+{% endblock %}

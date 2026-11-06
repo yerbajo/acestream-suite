@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Guía de {{ channel.title }} · acestream-suite{% endblock %}
+
+{% block content %}
+<p class="breadcrumb"><a href="{{ url_for('channel_detail', channel_id=channel.id) }}">← {{ channel.title }}</a></p>
+
+<div class="page-head">
+  <h1>Guía de {{ channel.title }}</h1>
+  <div class="actions">
+    <a class="button" href="{{ url_for('epg_mapping') }}">Cambiar la guía</a>
+  </div>
+</div>
+
+{% if not channel.guide_channel_id %}
+<section class="empty-state">
+  <p class="empty-title">Sin guía para este canal</p>
+  <p>Este canal no está asignado a ningún canal de la guía, así que no hay programación que mostrar. <a href="{{ url_for('epg_mapping') }}">Asígnalo en la pantalla de guía</a>.</p>
+</section>
+{% elif not rows %}
+<section class="empty-state">
+  <p class="empty-title">Sin guía para este canal</p>
+  <p>La guía está asignada, pero no hay programas en las próximas 24 horas: puede que la última descarga no trajera este canal o que esté a medio cargar.</p>
+</section>
+{% else %}
+<p class="hint">Próximas 24 horas, hora de Madrid. El programa en emisión va marcado.</p>
+<div class="table-wrap">
+  <table class="channels guide">
+    <thead>
+      <tr>
+        <th scope="col">Hora</th>
+        <th scope="col">Programa</th>
+        <th scope="col">Descripción</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for programme in rows %}
+      {% set on_now = programme.start <= now and now < programme.stop %}
+      <tr{% if on_now %} class="grid-current"{% endif %}>
+        <td class="guide-hour"><time datetime="{{ programme.start.isoformat() }}">{{ guide_time_range(programme) }}</time></td>
+        <td class="title">
+          {% if on_now %}<span class="badge-now">Ahora</span>{% endif %}
+          {{ programme.title }}
+        </td>
+        <td class="message">{{ programme.description or "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,713 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --text: #1c2026;
+  --muted: #5f6b7a;
+  --border: #dde1e7;
+  --accent: #2f6fdb;
+  --on-accent: #ffffff;
+  --alive-bg: #e3f5e9;
+  --alive-fg: #1d6b3a;
+  --warn-bg: #fdf1dc;
+  --warn-fg: #8a5a00;
+  --bad-bg: #fbe5e5;
+  --bad-fg: #a12a2a;
+  --none-bg: #eceef2;
+  --none-fg: #5f6b7a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c;
+    --surface: #1c2027;
+    --text: #e6e9ee;
+    --muted: #9aa5b4;
+    --border: #2e343e;
+    --accent: #7aa7f5;
+    --on-accent: #10141a;
+    --alive-bg: #173a25;
+    --alive-fg: #8fdcaa;
+    --warn-bg: #3d2f12;
+    --warn-fg: #f0c674;
+    --bad-bg: #401c1c;
+    --bad-fg: #f29b9b;
+    --none-bg: #2a2f38;
+    --none-fg: #9aa5b4;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+a { color: var(--accent); }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 12px 24px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* El logotipo manda el tamaño y ya trae el nombre dibujado: 38 px de alto mantienen legible la
+   placa del arte en 3D (relación 6,6:1) sin empujar la cabecera. */
+.topbar .brand-logo { height: 38px; width: auto; display: block; }
+
+.topbar nav { display: flex; gap: 16px; }
+.topbar nav a { text-decoration: none; }
+
+.content {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+h1 { font-size: 22px; margin: 0 0 16px; }
+
+.table-wrap {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* The whole table is one point smaller than the page: eleven facts per row have to read at a
+   glance without a horizontal scroll, and 13px keeps the secondary cells (category, language,
+   peers, dates) compact while the title stays at 14px as the row's anchor. */
+table.channels { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+.channels th,
+.channels td {
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.channels th {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.channels tbody tr:last-child td { border-bottom: none; }
+.channels .num { text-align: right; font-variant-numeric: tabular-nums; }
+.channels .title { white-space: normal; font-weight: 500; min-width: 160px; }
+
+/* The channel's own screenshot rides in the title cell at thumbnail size: one whole column saved
+   for a fact that stays visible. The name sits beside it and wraps, so the column never grows to
+   the width of its longest title. */
+.channels .title-main { display: flex; align-items: center; gap: 8px; }
+.channels .title-main a { min-width: 0; font-size: 14px; }
+
+.channels .thumb-mini,
+.channels .no-thumb {
+  flex: none;
+  display: block;
+  width: 64px;
+  height: 36px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--none-bg);
+}
+
+/* The detail page's history table is a different, wider table: its capture column keeps 96x54. */
+.thumb img {
+  display: block;
+  width: 96px;
+  height: 54px;
+  border-radius: 4px;
+  object-fit: cover;
+  background: var(--none-bg);
+}
+
+code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+abbr { text-decoration: none; cursor: help; }
+
+.status {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.status-alive { background: var(--alive-bg); color: var(--alive-fg); }
+.status-no_peers { background: var(--warn-bg); color: var(--warn-fg); }
+.status-not_found,
+.status-error { background: var(--bad-bg); color: var(--bad-fg); }
+.status-unchecked { background: var(--none-bg); color: var(--none-fg); }
+
+.empty-state {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.empty-state .empty-title { font-size: 17px; color: var(--text); margin-top: 0; }
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.page-head h1 { margin: 0; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.button {
+  display: inline-block;
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.button.danger { background: var(--bad-fg); border-color: var(--bad-fg); color: var(--on-accent); }
+.button:disabled { opacity: 0.6; cursor: progress; }
+
+.row-actions { text-align: right; }
+.danger-link { color: var(--bad-fg); }
+
+.card {
+  max-width: 720px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; flex: 1; }
+.field-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.field-row .field { min-width: 220px; }
+.field label { font-weight: 600; font-size: 14px; }
+
+.field input,
+.field select {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.field [aria-invalid="true"] { border-color: var(--bad-fg); }
+.field-error { margin: 0; color: var(--bad-fg); font-size: 13px; }
+.hint { margin: 0; color: var(--muted); font-size: 13px; }
+/* The guide's time range is the smallest thing in the table and the only thing below the event
+   name; 11px is enough to read "08:00-08:56" and keeps the column from being the widest one. */
+.channels .guide-cell .hint { font-size: 11px; }
+
+.form-error {
+  max-width: 720px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: var(--bad-bg);
+  color: var(--bad-fg);
+}
+
+.actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.busy { display: none; color: var(--muted); }
+form.htmx-request .busy { display: inline; }
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.filters .field { margin: 0; flex: 0 1 180px; }
+.filters .field-search { flex: 1 1 240px; }
+.filter-actions { display: flex; align-items: center; gap: 12px; }
+.result-count { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+
+.channels th a.sort { color: inherit; text-decoration: none; }
+.channels th a.sort:hover,
+.channels th a.sort.active { color: var(--text); }
+
+h2 { font-size: 18px; margin: 32px 0 12px; }
+.breadcrumb { margin: 0 0 8px; }
+.breadcrumb a { text-decoration: none; }
+.page-head .actions { margin: 0; flex-wrap: wrap; }
+.page-head form { display: flex; align-items: center; gap: 8px; }
+.button.danger-outline { color: var(--bad-fg); }
+
+.detail {
+  display: grid;
+  grid-template-columns: minmax(0, 480px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 800px) {
+  .detail { grid-template-columns: 1fr; }
+}
+
+.capture { margin: 0; }
+.capture img,
+.no-capture {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--none-bg);
+}
+
+.no-capture { display: grid; place-items: center; color: var(--muted); }
+.capture figcaption { margin-top: 6px; color: var(--muted); font-size: 13px; }
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.facts dt { color: var(--muted); font-size: 13px; font-weight: 600; }
+.facts dd { margin: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+code.wrap { word-break: break-all; }
+.history .message { white-space: normal; color: var(--muted); font-size: 13px; }
+.channels .title a { color: var(--text); text-decoration: none; }
+.channels .title a:hover { color: var(--accent); }
+
+form.inline { display: inline; }
+
+.link-button {
+  margin-left: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:disabled { opacity: 0.6; cursor: progress; }
+
+.notice {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 6px;
+}
+
+.notice-ok { background: var(--alive-bg); color: var(--alive-fg); }
+.notice-error { background: var(--bad-bg); color: var(--bad-fg); }
+
+.settings fieldset {
+  margin: 0 0 20px;
+  padding: 0 0 4px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings fieldset:last-of-type { border-bottom: none; }
+.settings legend { padding: 0; margin-bottom: 12px; font-weight: 700; font-size: 16px; }
+.settings fieldset .actions { margin: 0 0 16px; }
+
+.list-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.list-bar .result-count { margin: 0; }
+
+.batch {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+}
+
+.batch.finished { border-left-color: var(--alive-fg); }
+.batch-line { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.batch-line .link-button { margin-left: auto; }
+.batch progress { flex: 1; min-width: 160px; max-width: 400px; accent-color: var(--accent); }
+.batch-counts { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 0; }
+.batch-counts:empty { display: none; }
+
+.field textarea {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.5 ui-monospace, Consolas, monospace;
+  resize: vertical;
+}
+
+.import-summary { margin-bottom: 16px; }
+.import-summary h2 { margin-top: 0; }
+.import-summary h3 { font-size: 15px; margin: 16px 0 6px; }
+.import-list { margin: 0; padding-left: 20px; }
+.import-list li { margin: 2px 0; }
+
+.icon { display: block; }
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.icon-button:hover,
+.icon-button:focus-visible { color: var(--accent); background: var(--bg); border-color: var(--border); }
+.icon-button.danger:hover,
+.icon-button.danger:focus-visible { color: var(--bad-fg); }
+.icon-button:disabled { opacity: 0.6; cursor: progress; }
+.row-actions { white-space: nowrap; }
+.row-actions .icon-button { margin-left: 2px; }
+/* The row's three action buttons are the last thing the width budget needs: 28px keeps each one a
+   comfortable target (a 28x28 grid) while returning 12px per row over the 32px default. */
+.channels .row-actions .icon-button { width: 28px; height: 28px; margin-left: 1px; }
+
+.hash { white-space: nowrap; }
+.copy-button { width: 26px; height: 26px; margin-left: 4px; }
+.copy-button .icon { width: 15px; height: 15px; }
+.copy-button .when-copied { display: none; }
+.copy-button.copied { color: var(--alive-fg); }
+.copy-button.copied .when-idle { display: none; }
+.copy-button.copied .when-copied { display: block; }
+
+.list-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.resolution {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.channels .title a.pending-title { color: var(--muted); font-style: italic; }
+
+/* View switch: list / gallery */
+.view-switch { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.view-switch a { padding: 6px 12px; color: var(--muted); text-decoration: none; font-weight: 500; }
+.view-switch a + a { border-left: 1px solid var(--border); }
+.view-switch a[aria-current="page"] { background: var(--accent); color: var(--on-accent); }
+
+/* Gallery: Netflix-like rows of tiles, one per category */
+.gallery-section { margin: 24px 0 8px; }
+.gallery-section h2 { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px; }
+.section-count { color: var(--muted); font-size: 13px; font-weight: 500; }
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tile { min-width: 0; }
+
+.tile-media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--none-bg);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tile:hover .tile-media,
+.tile:focus-within .tile-media {
+  transform: scale(1.04);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile-media { transition: none; }
+  .tile:hover .tile-media,
+  .tile:focus-within .tile-media { transform: none; }
+}
+
+.tile-link,
+.tile-link img,
+.tile-placeholder { display: block; width: 100%; height: 100%; }
+.tile-link img { object-fit: cover; }
+
+.tile-placeholder {
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  background: linear-gradient(135deg, var(--none-bg), var(--surface));
+}
+
+.tile-status {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.tile-play { position: absolute; right: 8px; bottom: 8px; }
+
+.play-button {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: #111;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.play-button .icon { fill: currentColor; margin-left: 2px; }
+.tile:hover .play-button,
+.tile:focus-within .play-button,
+.play-button:focus-visible { opacity: 1; }
+.play-button:disabled { cursor: progress; }
+
+@media (hover: none) {
+  .play-button { opacity: 1; }
+}
+
+.tile-title {
+  margin: 10px 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.tile-title a { color: var(--text); text-decoration: none; }
+.tile-title a:hover { color: var(--accent); }
+.tile-title.pending-title a { color: var(--muted); font-style: italic; }
+
+.tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+
+.tag {
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.tag-resolution { color: var(--text); font-weight: 700; }
+.batch.aborted { border-left-color: var(--bad-fg); }
+.batch.aborted .hint { margin-top: 6px; }
+
+/* Ace Stream indicator */
+.engine-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.engine-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--none-fg); }
+.engine-status.up .engine-dot { background: var(--alive-fg); }
+.engine-status.down { color: var(--bad-fg); border-color: var(--bad-fg); }
+.engine-status.down .engine-dot { background: var(--bad-fg); }
+
+.engine-error { color: var(--bad-fg); font-size: 12px; white-space: normal; max-width: 260px; }
+
+.engine-start {
+  padding: 1px 10px;
+  border: 1px solid var(--bad-fg);
+  border-radius: 999px;
+  background: none;
+  color: var(--bad-fg);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.engine-start:hover { background: var(--bad-bg); }
+.engine-start .when-busy { display: none; }
+.engine-start.htmx-request .when-idle { display: none; }
+.engine-start.htmx-request .when-busy { display: inline; }
+.engine-start:disabled { cursor: progress; }
+
+/* Per-channel check next to the status badge */
+.status-cell { white-space: nowrap; }
+.recheck-button { width: 26px; height: 26px; margin-left: 4px; }
+.recheck-button .icon { width: 15px; height: 15px; }
+
+/* Guide: now/next cells on the catalogue list */
+.channels .guide-cell { white-space: normal; min-width: 118px; vertical-align: top; }
+.channels .guide-cell .hint { display: block; }
+/* Only the programme on now; the next one lives in the grid this cell links to, so there is nothing
+   to style for it here. */
+.guide-now { font-weight: 600; }
+/* The mapped guide's name is not shown on the list: the row is already that channel's catalogue
+   entry, so repeating the guide's name beside the event said nothing new. The name is a decision,
+   and it is read on the mapping screen where the decision is made. */
+/* The hash is a 6+4 hex prefix and a copy button; the full value stays in the code's `title` and
+   in the copy button, so the fact is never hidden. One point smaller keeps the column from being
+   the widest one after the merge. Country and language already render the 2-letter code inside an
+   `abbr`, and the resolution badge its shortest label. */
+.channels .hash code { font-size: 12px; }
+
+/* Guide: one channel's next 24 h */
+.channels.guide .guide-hour { white-space: nowrap; font-variant-numeric: tabular-nums; vertical-align: top; }
+/* The description is prose, not a label. `white-space: nowrap` comes from `.channels td`, which is
+   right for a title, a hash or a status and wrong here: a synopsis on one line is either clipped by
+   the table wrap or drags the whole table wider. It wraps, it reads at 46ch, and it is the only
+   cell in this table allowed to grow tall — aligned to the top like the hour so a two-line synopsis
+   does not float in the middle of a taller row. `pre-line` and not `normal` because a source that
+   ships its synopsis in two paragraphs means it, and a real line break is the one case where the
+   text already says where it should wrap. */
+.channels.guide .message {
+  white-space: pre-line;
+  vertical-align: top;
+  min-width: 240px;
+  max-width: 46ch;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 13px;
+}
+.channels.guide .title { vertical-align: top; }
+.channels.guide tr.grid-current { background: var(--alive-bg); }
+.badge-now {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--alive-fg);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+/* Mapping screen */
+.mapping-list { margin: 0 0 24px; padding: 0; list-style: none; display: grid; gap: 12px; }
+.mapping-item {
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.mapping-title { margin: 0 0 8px; font-weight: 600; }
+.candidates { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+.candidate {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 3px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.candidate-name { font-weight: 600; }
+.candidate .button { padding: 2px 9px; font-size: 12px; }
+.candidate-leftover { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.guide-pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.guide-search,
+.guide-pick select {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.guide-search { flex: 1 1 220px; min-width: 180px; }
+.guide-pick select { max-width: 320px; }
+.pagination { display: flex; align-items: center; gap: 12px; margin: 0 0 24px; }
+
+/* La caja de «añadir» de la búsqueda. `settings fieldset` está scoped a esa página, así que la
+   búsqueda necesita el mismo trato aquí: una superficie propia, separada de la tabla por espacio,
+   con el título como leyenda y la acción dentro. */
+.search-add {
+  margin: 16px 0 0;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.search-add legend { padding: 0 8px; margin-inline-start: -8px; font-weight: 700; }
+.search-add .field-row .field { min-width: 220px; }
+.search-add .actions { margin: 0; flex-wrap: wrap; }
+.search-add .actions .hint { flex: 1 1 240px; }
+
+/* La respuesta de «Reproducir» cae debajo del botón, sin descolocar la fila mientras llega. */
+.play-slot:empty { display: none; }
+.play-slot:not(:empty) { margin-top: 6px; font-size: 12px; }

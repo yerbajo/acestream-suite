@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# 422 is a rejected form and 503 a missing player or engine: htmx must show them. #}
+  <meta name="htmx-config" content='{"responseHandling": [{"code": "204", "swap": false}, {"code": "[23]..", "swap": true}, {"code": "422", "swap": true}, {"code": "503", "swap": true}, {"code": "[45]..", "swap": false, "error": true}]}'>
+  <title>{% block title %}acestream-suite{% endblock %}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ static_url(request, 'logo-mark.svg') }}">
+  <link rel="icon" href="{{ static_url(request, 'favicon.ico') }}" sizes="any">
+  <link rel="stylesheet" href="{{ static_url(request, 'style.css') }}">
+  <script src="{{ static_url(request, 'htmx.min.js') }}" defer></script>
+  <script src="{{ static_url(request, 'app.js') }}" defer></script>
+</head>
+<body hx-boost="true">
+  <header class="topbar">
+    {# El logotipo lleva el nombre dentro, así que el `alt` es el nombre: nada de texto duplicado. #}
+    <a class="brand" href="{{ url_for('channel_list') }}">
+      <img class="brand-logo" src="{{ static_url(request, 'logo-wordmark.png') }}"
+           alt="acestream-suite" width="640" height="103">
+    </a>
+    <nav>
+      <a href="{{ url_for('channel_list') }}">Canales</a>
+      <a href="{{ url_for('channel_gallery') }}">Galería</a>
+      <a href="{{ url_for('epg_mapping') }}">Guía</a>
+      <a href="{{ url_for('import_page') }}">Importar</a>
+      <a href="{{ url_for('search_page') }}">Buscar</a>
+      <a href="{{ url_for('settings') }}">Ajustes</a>
+    </nav>
+    {% include "_engine_status.html" %}
+  </header>
+  <main class="content">
+    {# Results of in-page actions, such as opening a channel in VLC. #}
+    <div id="notices" aria-live="polite"></div>
+    {% set flashed = flash_message(request) %}
+    {% if flashed %}<p class="notice notice-error" role="alert">{{ flashed }}</p>{% endif %}
+    <div id="announcer" class="visually-hidden" aria-live="polite"></div>
+    {# A page that must not reload when checks end sets `reload_on_checks = false`. #}
+    {% with batch = request.app.state.check_runner.current() %}
+    {% with watch = batch.id if batch and reload_on_checks is not false else "" %}
+    {% include "_batch_status.html" %}
+    {% endwith %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

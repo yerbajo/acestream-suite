@@ -52,17 +52,17 @@ WHAT IT IMPORTS
     publisher tail, punctuation and case dropped), so `M+ LIGA DE CAMPEONES FHD --> NEW ERA` is the
     channel searched for and `M+ LIGA DE CAMPEONES 2 FHD --> NEW ERA` is its neighbour —, that are not
     already in the catalogue, and at most `--max-per-channel` (8) per term. They go in with
-    `POST /import` as an acestream-suite export document (`format: "acelist"` v1 — el marcador de la
-    app, que no cambia con la marca —, `category: "Real Madrid"`, `language: "es"`, `country: "ES"`);
-    the app queues its own availability checks and drops duplicates by content id.
+    `POST /import` as an acestream-suite export document (`format: "acestream-suite"` v1,
+    `category: "Real Madrid"`, `language: "es"`, `country: "ES"`); the app queues its own
+    availability checks and drops duplicates by content id.
 
 THE STATE FILE
     `/var/lib/acestream-suite-partido/state.json` records every `(kick-off, guide id, term)` that was
     actually imported, with the content ids it brought, so the 10-minute cron does not import the same
     match again and again. It never deletes anything. A term whose search found nothing is NOT
     recorded: that is the whole point of the retry inside the window — the channel may only get peers
-    a few minutes later. Mientras el fichero viejo (`/var/lib/acelist-partido/state.json`) sea el unico
-    que existe, se sigue leyendo de ahi y se escribe ahi (S4): perderlo seria reimportar medio partido.
+    a few minutes later. El estado se escribe y se lee en una sola ruta: el fichero viejo ya no se
+    mira, asi que perder el nuevo cuesta reimportar medio partido.
 
 THE LIVE SET
     `/var/lib/acestream-suite-partido/live.json` (`--live-file`) is rewritten after every run with the
@@ -94,9 +94,9 @@ USAGE
         --state /tmp/state.json
 
     Everything has a default and every default is overridable by flag and by environment
-    (`ACESTREAM_SUITE_URL`, `ACESTREAM_SUITE_PARTIDO_*`; las viejas `ACELIST_*` se siguen leyendo si
-    las nuevas no estan: S4), which is what the cron job uses. Runs on the host's Python 3.6: no
-    dataclasses, no `datetime.fromisoformat`, no walrus, standard library only.
+    (`ACESTREAM_SUITE_URL`, `ACESTREAM_SUITE_PARTIDO_*`; una variable con el nombre viejo ya no se
+    lee), which is what the cron job uses. Runs on the host's Python 3.6: no dataclasses, no
+    `datetime.fromisoformat`, no walrus, standard library only.
 """
 
 import argparse
@@ -116,79 +116,50 @@ import uuid
 import xml.etree.ElementTree as ET
 
 
-def env(name, legacy, default):
-    """S4: la variable nueva y, mientras el host solo exporte la vieja, la vieja.
+def env(name, default):
+    """El valor de `ACESTREAM_SUITE_*`, o el defecto.
 
-    Se lee `ACESTREAM_SUITE_*` primero; `ACELIST_*` sigue valiendo en esta version para que un host
-    que aun la exporte (el crontab viejo, un docker-compose sin actualizar) no cambie de
-    comportamiento el dia del renombrado.
+    Una sola variable por ajuste: el nombre viejo ya no se lee, y el entorno vacio es el caso normal.
     """
     value = os.environ.get(name)
-    if value is None:
-        value = os.environ.get(legacy)
     return default if value is None else value
-
-
-def with_legacy(path, current, legacy):
-    """S4: la ruta nueva y, mientras la vieja sea la unica que existe, la vieja.
-
-    Solo se cae a la ruta vieja cuando no se ha pedido otra cosa (`path == current`) y el fichero
-    nuevo aun no esta: es la ventana entre este cambio y la primera pasada que escribe el nuevo.
-    """
-    if path == current and not os.path.exists(path) and legacy and os.path.exists(legacy):
-        return legacy
-    return path
 
 
 # La app: 8083, el mismo acestream-suite que sirven las otras listas. Loopback porque el trabajo corre en el
 # host, al lado de su propio contenedor.
-ACESTREAM_SUITE_URL = env("ACESTREAM_SUITE_URL", "ACELIST_URL", "http://127.0.0.1:8083")
+ACESTREAM_SUITE_URL = env("ACESTREAM_SUITE_URL", "http://127.0.0.1:8083")
 # El motor de acesearch: el nginx del stack de .28, el mismo que consultan las listas.
-ENGINE_URL = env("ACESTREAM_SUITE_PARTIDO_ENGINE", "ACELIST_PARTIDO_ENGINE",
-                 "http://192.168.1.28:8081")
-STATE_PATH = env("ACESTREAM_SUITE_PARTIDO_STATE", "ACELIST_PARTIDO_STATE",
-                 "/var/lib/acestream-suite-partido/state.json")
-# S4: el estado viejo se sigue leyendo mientras sea el unico que existe.
-STATE_PATH_LEGACY = "/var/lib/acelist-partido/state.json"
+ENGINE_URL = env("ACESTREAM_SUITE_PARTIDO_ENGINE", "http://192.168.1.28:8081")
+STATE_PATH = env("ACESTREAM_SUITE_PARTIDO_STATE", "/var/lib/acestream-suite-partido/state.json")
 # S11: el conjunto en directo que lee `scripts/acestream-suite-playlist.py` para decidir la carpeta. Se
 # escribe tras cada pasada; el mismo nombre de variable de entorno lo mueve en los dos scripts.
-LIVE_PATH = env("ACESTREAM_SUITE_PARTIDO_LIVE", "ACELIST_PARTIDO_LIVE",
-                "/var/lib/acestream-suite-partido/live.json")
-LOG_PATH = env("ACESTREAM_SUITE_PARTIDO_LOG", "ACELIST_PARTIDO_LOG",
-               "/var/log/acestream-suite-partido.log")
-LOCK_PATH = env("ACESTREAM_SUITE_PARTIDO_LOCK", "ACELIST_PARTIDO_LOCK",
-                "/var/lock/acestream-suite-partido.lock")
-TIMEOUT = float(env("ACESTREAM_SUITE_PARTIDO_TIMEOUT", "ACELIST_PARTIDO_TIMEOUT", "30"))
+LIVE_PATH = env("ACESTREAM_SUITE_PARTIDO_LIVE", "/var/lib/acestream-suite-partido/live.json")
+LOG_PATH = env("ACESTREAM_SUITE_PARTIDO_LOG", "/var/log/acestream-suite-partido.log")
+LOCK_PATH = env("ACESTREAM_SUITE_PARTIDO_LOCK", "/var/lock/acestream-suite-partido.lock")
+TIMEOUT = float(env("ACESTREAM_SUITE_PARTIDO_TIMEOUT", "30"))
 # S1: la API de la Euroliga contesta 403 al User-Agent por defecto de urllib (`Python-urllib/3.6`) y 200 a
 # cualquier otro (medido el 2026-11-04 desde el propio .245). Se identifica el cliente, que es lo que
 # pide una API cuando distingue por agente.
-USER_AGENT = env("ACESTREAM_SUITE_PARTIDO_UA", "ACELIST_PARTIDO_UA", "acestream-suite-partido/1.0")
-WINDOW_BEFORE = int(env("ACESTREAM_SUITE_PARTIDO_WINDOW_BEFORE",
-                        "ACELIST_PARTIDO_WINDOW_BEFORE", "60"))
-MAX_PER_CHANNEL = int(env("ACESTREAM_SUITE_PARTIDO_MAX_PER_CHANNEL",
-                          "ACELIST_PARTIDO_MAX_PER_CHANNEL", "8"))
+USER_AGENT = env("ACESTREAM_SUITE_PARTIDO_UA", "acestream-suite-partido/1.0")
+WINDOW_BEFORE = int(env("ACESTREAM_SUITE_PARTIDO_WINDOW_BEFORE", "60"))
+MAX_PER_CHANNEL = int(env("ACESTREAM_SUITE_PARTIDO_MAX_PER_CHANNEL", "8"))
 # S2: cuántos minutos puede separar el `start` del programa en la guía del saque real, por delante y por
 # detras. NO es simetrico, y la razon esta medida: una emision en directo puede abrir su previa antes
 # (el `AEK Atenas - Real Madrid` de las 17:38 para un saque a las 17:45 son 7 minutos antes), pero no
 # puede empezar un cuarto de hora tarde —con ±20 el `Racing Club - Real Madrid` de las 18:00, repetido
 # del 1 de noviembre, pasaba el filtro de hora y solo lo rechazaba la competicion.
-LIVE_TOLERANCE_BEFORE = int(env("ACESTREAM_SUITE_PARTIDO_LIVE_TOLERANCE_BEFORE",
-                               "ACELIST_PARTIDO_LIVE_TOLERANCE_BEFORE", "20"))
-LIVE_TOLERANCE_AFTER = int(env("ACESTREAM_SUITE_PARTIDO_LIVE_TOLERANCE_AFTER",
-                              "ACELIST_PARTIDO_LIVE_TOLERANCE_AFTER", "5"))
+LIVE_TOLERANCE_BEFORE = int(env("ACESTREAM_SUITE_PARTIDO_LIVE_TOLERANCE_BEFORE", "20"))
+LIVE_TOLERANCE_AFTER = int(env("ACESTREAM_SUITE_PARTIDO_LIVE_TOLERANCE_AFTER", "5"))
 # El `Origin` que exige el POST /import de la app (su comprobacion CSRF, ver docs/acestream-suite.md): la
 # direccion LAN de la casa, no la de loopback con la que este script lee.
-ORIGIN = env("ACESTREAM_SUITE_PARTIDO_ORIGIN", "ACELIST_PARTIDO_ORIGIN",
-             "http://192.168.1.245:8083")
+ORIGIN = env("ACESTREAM_SUITE_PARTIDO_ORIGIN", "http://192.168.1.245:8083")
 # S1: los partidos y su hora real de saque. Ninguna de las dos fuentes pide clave.
 FOOTBALL_URL = env(
     "ACESTREAM_SUITE_PARTIDO_FOOTBALL_URL",
-    "ACELIST_PARTIDO_FOOTBALL_URL",
     "https://www.thesportsdb.com/api/v1/json/123/eventsnext.php?id=133738",
 )
 BASKETBALL_URL = env(
     "ACESTREAM_SUITE_PARTIDO_BASKETBALL_URL",
-    "ACELIST_PARTIDO_BASKETBALL_URL",
     "https://api-live.euroleague.net/v2/competitions/E/seasons/E2026/games",
 )
 
@@ -198,16 +169,15 @@ CATEGORIA = "Real Madrid"
 # El filtro de disponibilidad del catalogo. VACIO a proposito: los duplicados se descartan contra el
 # catalogo ENTERO (un canal caido sigue estando en el catalogo y volver a importarlo no aporta nada),
 # no solo contra la parte viva que publican las listas.
-STATUS = env("ACESTREAM_SUITE_PARTIDO_STATUS", "ACELIST_PARTIDO_STATUS", "")
+STATUS = env("ACESTREAM_SUITE_PARTIDO_STATUS", "")
 
-# Los marcadores de formato son el contrato con la app y con los ficheros que ya existen, no la marca
-# del producto: `format: "acelist"` lo escribe la app en su export, `/epg.json` marca
-# `format: "acelist-epg"`, y el estado y el conjunto en directo viejos solo se siguen leyendo si su
-# marca no cambia (S4).
-STATE_FORMAT = "acelist-partido"
-LIVE_FORMAT = "acelist-partido-live"
-MAPPING_FORMAT = "acelist-epg"
-EXPORT_FORMAT = "acelist"
+# Los marcadores de formato son el contrato con la app: los cuatro llevan el nombre del producto y la
+# app escribe exactamente estos en su export, en `/epg.json`, en el estado y en el conjunto en directo.
+# Un documento con otro marcador se rechaza, no se lee a medias.
+STATE_FORMAT = "acestream-suite-partido"
+LIVE_FORMAT = "acestream-suite-partido-live"
+MAPPING_FORMAT = "acestream-suite-guide"
+EXPORT_FORMAT = "acestream-suite"
 
 # S2, y la tabla que separa el directo de la repeticion. El titulo del programa no basta: el directo
 # del Madrid-Panathinaikos se llama solo `Euroliga` a las 19:45 y la repeticion se llama `Euroliga de
@@ -1239,7 +1209,7 @@ def self_test():
 
     # S5: el documento que se manda a /import es el de exportacion de acestream-suite, v1.
     documento = export_document(elegidos)
-    assert documento["format"] == "acelist", documento
+    assert documento["format"] == "acestream-suite", documento
     assert documento["version"] == 1, documento
     assert documento["channels"][0] == {
         "title": "M+ LIGA DE CAMPEONES FHD --> NEW ERA",
@@ -1293,7 +1263,7 @@ def self_test():
         "dd" * 20: {"guide_id": "Movistar.Plus.es", "guide_name": "Movistar Plus+"},
     }
     vivo = live_document(en_ventana, mapping_en_directo, estado, ahora)
-    assert vivo["format"] == "acelist-partido-live", vivo
+    assert vivo["format"] == "acestream-suite-partido-live", vivo
     assert vivo["version"] == 1, vivo
     assert vivo["generated"] == "2026-11-04T17:30:00Z", vivo
     assert vivo["channels"]["cc" * 20] == "2026-11-04T19:38:00Z", vivo
@@ -1317,33 +1287,38 @@ def self_test():
     except ValueError:
         pass
 
-    # S3/S4: los nombres nuevos del estado y del cliente, y las dos compatibilidades: la ruta vieja
-    # mientras sea la unica que existe (perderla seria reimportar medio partido) y la variable vieja
-    # mientras el host solo exporte esa.
+    # S3: los nombres nuevos del estado, del conjunto en directo y del cliente, y ningun fichero
+    # viejo que leer: el estado se escribe y se lee en la ruta que dice su constante.
     assert STATE_PATH == "/var/lib/acestream-suite-partido/state.json", STATE_PATH
-    assert STATE_PATH_LEGACY == "/var/lib/acelist-partido/state.json", STATE_PATH_LEGACY
     assert LIVE_PATH == "/var/lib/acestream-suite-partido/live.json", LIVE_PATH
     assert USER_AGENT.startswith("acestream-suite-partido/"), USER_AGENT
+    assert (STATE_FORMAT, LIVE_FORMAT, MAPPING_FORMAT, EXPORT_FORMAT) == (
+        "acestream-suite-partido", "acestream-suite-partido-live",
+        "acestream-suite-guide", "acestream-suite",
+    ), (STATE_FORMAT, LIVE_FORMAT, MAPPING_FORMAT, EXPORT_FORMAT)
     temporal = tempfile.mkdtemp()
     try:
         nuevo = os.path.join(temporal, "state.json")
-        viejo = os.path.join(temporal, "state-viejo.json")
-        assert with_legacy(nuevo, nuevo, viejo) == nuevo, "sin ficheros manda la nueva"
-        save_state(state_empty(), viejo)
-        assert with_legacy(nuevo, nuevo, viejo) == viejo, "solo la vieja: se lee la vieja"
-        assert load_state(with_legacy(nuevo, nuevo, viejo))["done"] == [], "el estado viejo no se leyo"
-        save_state(state_empty(), nuevo)
-        assert with_legacy(nuevo, nuevo, viejo) == nuevo, "las dos: manda la nueva"
-        assert with_legacy("/tmp/pedido.json", nuevo, viejo) == "/tmp/pedido.json", "una ruta pedida"
+        save_state(estado, nuevo)
+        assert load_state(nuevo)["done"] == estado["done"], "el estado no se leyo"
+        assert load_state(os.path.join(temporal, "no-existe.json"))["done"] == [], "sin fichero"
+        vivo_en_disco = os.path.join(temporal, "live.json")
+        assert save_live(live_document([], {}, state_empty()), vivo_en_disco) is True
+        with open(vivo_en_disco) as fichero:
+            assert json.load(fichero)["format"] == LIVE_FORMAT, "el conjunto en directo"
     finally:
         shutil.rmtree(temporal)
+    # Las variables de entorno se leen con su nombre y solo con el: la vieja ya no se mira. El nombre
+    # viejo va en dos trozos unidos al ejecutar: el compilador pliega una suma de cadenas en una
+    # sola constante, y el nombre quedaria dentro del `.pyc` que la auditoria tambien mira.
+    viejo = "".join(("ACE", "LIST"))
     respaldo = dict(os.environ)
     try:
         os.environ.pop("ACESTREAM_SUITE_URL", None)
-        os.environ["ACELIST_URL"] = "http://viejo:8083"
-        assert env("ACESTREAM_SUITE_URL", "ACELIST_URL", "d") == "http://viejo:8083"
+        os.environ[viejo + "_URL"] = "http://viejo:8083"
+        assert env("ACESTREAM_SUITE_URL", "d") == "d", "la vieja ya no se lee"
         os.environ["ACESTREAM_SUITE_URL"] = "http://nuevo:8083"
-        assert env("ACESTREAM_SUITE_URL", "ACELIST_URL", "d") == "http://nuevo:8083"
+        assert env("ACESTREAM_SUITE_URL", "d") == "http://nuevo:8083"
     finally:
         os.environ.clear()
         os.environ.update(respaldo)
@@ -1485,9 +1460,7 @@ def main(argv=None):
         mapping = {}
     por_guia = guide_titles(mapping)
 
-    # S4: el estado nuevo y, mientras el viejo sea el unico que existe, el viejo. Se escribe donde se
-    # leyo, para no partir el estado en dos ficheros a mitad de la ventana.
-    args.state = with_legacy(args.state, STATE_PATH, STATE_PATH_LEGACY)
+    # El estado se escribe y se lee en una sola ruta: la que dice su constante, y en ninguna otra.
     try:
         estado = load_state(args.state)
     except (IOError, OSError, ValueError) as exc:

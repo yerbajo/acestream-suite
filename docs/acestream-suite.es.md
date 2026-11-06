@@ -4,22 +4,23 @@ acestream-suite es un catálogo de enlaces AceStream: canales con su Content ID,
 disponibilidad contra el motor, una captura de imagen de cada canal, categorías, búsqueda y un botón
 de reproducción. Es el frontal que el servicio de búsqueda de AceStream nunca tuvo.
 
-> **El producto se llamaba AceList**: ahora es `acestream-suite`, y el renombrado está registrado en
-> `odd/tasks/acestream-suite-rename.md`. Rige la compatibilidad de una versión — las viejas
-> `/varios/acelist.m3u` y `/varios/acelist-epg.m3u` se mantienen como copia de las listas nuevas, las
-> variables `ACELIST_*` se siguen leyendo cuando falta la nueva, y `/usr/local/bin/acelist-*` son
-> envoltorios de los binarios nuevos. El motor AceStream conserva su nombre y los datos no se han movido.
+> **El producto es `acestream-suite`.** El código de la aplicación vive en este repositorio
+> (`acestream-suite/`), así que no se descarga ninguna release ni se aplica ningún parche; los nombres
+> de las listas, las variables `ACESTREAM_SUITE_*` y los binarios `/usr/local/bin/acestream-suite-*`
+> llevan ese nombre, y los nombres que el producto tenía antes del renombrado ya no existen. El motor
+> AceStream conserva su nombre. El renombrado está registrado en
+> `odd/tasks/acestream-suite-rename.md`.
 
 | | |
 |---|---|
 | URL | `http://192.168.1.245:8083` (solo LAN, sin autenticación) |
 | Host | `dev.albertucho.home` — 192.168.1.245, RHEL 8.7 |
 | Contenedor | `acestream-suite`, a partir de la imagen construida aquí, `acestream-suite:1.3.0` |
-| Origen | `https://github.com/fabiomb/AceList` etiqueta `v1.3.0`, más `acestream-suite/acestream-suite-lan.patch` y `acestream-suite/acestream-suite-guide.patch` |
+| Origen | este repositorio: `acestream-suite/` guarda la aplicación (`app/`, `migrations/`, `pyproject.toml`, `alembic.ini`) y el `Dockerfile` que la construye — ninguna release descargada, ningún parche |
 | Motor | el motor AceStream de **192.168.1.28**, dentro de su túnel WireGuard |
 | Guía (EPG) | este servicio la lleva — `docs/acestream-suite-guide.md` |
-| Plan y evidencias | `odd/tasks/acelist.md` |
-| Ficheros en el host | `/opt/acestream-suite/` (compose, Dockerfile, entrypoint, los dos parches, `data/`) |
+| Plan y evidencias | `odd/tasks/acestream-suite-rename.md`; los planes anteriores de `odd/tasks/` conservan el nombre con el que se crearon |
+| Ficheros en el host | `/opt/acestream-suite/` (compose, Dockerfile, entrypoint, el puente HLS, el árbol de la aplicación, `data/`) |
 
 ## Por qué el motor está en otro host
 
@@ -37,38 +38,31 @@ hubo que cambiar nada en .28 para este despliegue.
 
 ## Cómo se construye
 
-El proyecto no publica ninguna imagen, así que la imagen se construye aquí, a partir del tarball de
-la release fijado:
+La imagen se construye aquí, desde el árbol de este repositorio. No hay tarball de release ni fichero
+de parche: la aplicación que corre el host es el código de `acestream-suite/`.
 
-- Tarball de la etiqueta `v1.3.0`, verificado contra
-  `487bee2f792d2bd30029a32bbd33b9f023cfc0d033c05fdb74bb2e169c72d879`.
-- Encima se aplican tres parches locales, en este orden: `acestream-suite-lan.patch` (tres ideas:
-  lista de hosts permitidos para la LAN, un modo de reproducción sin reproductor local, y el
-  dialecto `infohash` del motor), `acestream-suite-guide.patch` (la guía, fusionada desde el
-  despliegue duplicado el 2026-10-14) y `acestream-suite-search.patch` (la página de búsqueda
-  contra `acesearch`, y su ajuste, 2026-11-05). El parche de LAN existe porque el repositorio no
-  tiene LICENSE — ejecutarlo sí, redistribuir un fork o una imagen no — y porque el propio
-  `docs/engine-api.md` del autor dice que la aplicación debe quedarse en loopback: un pull request
-  para lo contrario sería discutir su propio diseño.
+- `acestream-suite/Dockerfile` copia `pyproject.toml`, `alembic.ini`, `app/` y `migrations/` del árbol
+  con `COPY`, instala ese árbol en modo editable y copia los dos binarios —el favicon y el logotipo—
+  a `app/web/static/`.
 - La imagen instala `ffmpeg`: las capturas y la verificación de disponibilidad leen el directo a
   través de él.
-- `python:3.12-slim`, que es una de las dos versiones que prueba el CI del autor.
-  del autor.
+- `python:3.12-slim` como base, el estado de la aplicación en `/data` (`ACESTREAM_SUITE_DATA_DIR`) y
+  el puerto 8000 dentro del contenedor.
 
 Los ficheros del despliegue (`acestream-suite/Dockerfile`, `docker-compose.yml`, `entrypoint.sh`,
-`hls-bridge.py` y los tres parches) están versionados en este repositorio; entraron por primera vez en
-el commit `0ebf092`, que registró el estado que el host ya estaba ejecutando, de modo que la fusión de
-la guía que vino después tuviera ficheros que cambiar y revertir.
+`hls-bridge.py` y el árbol de la aplicación) están versionados en este repositorio; entraron por
+primera vez en el commit `0ebf092`, que registró el estado que el host ya estaba ejecutando, de modo
+que la fusión de la guía que vino después tuviera ficheros que cambiar y revertir.
 
 ## La guía (EPG)
 
 Este servicio lleva ahora también la guía: fuentes XMLTV, una correspondencia entre canal y canal de
 guía, una ventana de programas de 72 h, una celda de ahora/después y una parrilla en la interfaz,
-más `/epg.xml` y una lista que lleva la guía. Se construyó y se probó en un duplicado llamado
-`AceListEPG` para que este servicio no fuera el banco de pruebas, y se fusionó aquí el 2026-10-14.
-El procedimiento del operador — fuentes, refresco, correspondencia, salidas y diagnóstico — es
-**`docs/acestream-suite-guide.md`** (+ `.es.md`); el plan y sus evidencias están en
-`odd/tasks/acelist-epg.md`.
+más `/epg.xml` y una lista que lleva la guía. Se construyó y se probó en un duplicado —un segundo
+despliegue del producto con el nombre que tenía entonces— para que este servicio no fuera el banco de
+pruebas, y se fusionó aquí el 2026-10-14. El procedimiento del operador — fuentes, refresco,
+correspondencia, salidas y diagnóstico — es **`docs/acestream-suite-guide.md`** (+ `.es.md`); el plan y
+sus evidencias son los ficheros de `odd/tasks/`, que conservan el nombre con el que se crearon.
 
 ## Buscar en el índice (acesearch)
 
@@ -107,19 +101,21 @@ conoce y el catálogo no.
 Acción, desde el portátil:
 
 ```bash
-cd ~/webserver/acestream-suite
-scp Dockerfile entrypoint.sh docker-compose.yml \
-    acestream-suite-lan.patch acestream-suite-guide.patch root@192.168.1.245:/opt/acestream-suite/
+cd ~/webserver
+scp -r acestream-suite/Dockerfile acestream-suite/docker-compose.yml acestream-suite/entrypoint.sh \
+    acestream-suite/hls-bridge.py acestream-suite/pyproject.toml acestream-suite/alembic.ini \
+    acestream-suite/app acestream-suite/migrations acestream-suite/assets \
+    root@192.168.1.245:/opt/acestream-suite/
 ```
 
 Acción, en el host:
 
 ```bash
-mkdir -p /opt/acelist/data && chown 1000:1000 /opt/acelist/data
+mkdir -p /opt/acestream-suite/data && chown 1000:1000 /opt/acestream-suite/data
 cd /opt/acestream-suite && docker compose build && docker compose up -d
 ```
 
-Registro:
+Registro — salida literal de esa fecha (2026-10-09), con los nombres de ese día, anterior al renombrado:
 
 ```
 #13 writing image sha256:2c93dd862e9d5afd2853a983042133696dd36c518990401ce8844f94b2f36052 done
@@ -129,9 +125,7 @@ acelist	Up 10 seconds (health: starting)
 {"status":"ok","app":"AceList","version":"1.3.0"}
 ```
 
-Ese registro es del 2026-10-09, anterior al renombrado, así que la imagen, el contenedor y la respuesta
-de salud llevan los nombres de ese día; un despliegue de hoy nombra la imagen y el contenedor
-`acestream-suite`.
+Un despliegue de hoy nombra la imagen y el contenedor `acestream-suite`.
 
 El `chown` importa: Docker crea un origen de montaje que no existe como directorio vacío propiedad de
 root, y el contenedor corre como `1000:1000` (la cuenta `ingenieria` del host), así que con otro
@@ -158,8 +152,8 @@ Registro:
 ```
 
 El primero es la aplicación atendiendo a la dirección de la LAN; el segundo y el tercero demuestran
-que la comprobación de Host y la de CSRF siguen haciendo su trabajo, que es exactamente por lo que el
-parche añade direcciones reales a su lista de permitidos en vez de desactivarlas.
+que la comprobación de Host y la de CSRF siguen haciendo su trabajo, que es exactamente por lo que la
+propia aplicación lee las direcciones reales de `ACESTREAM_SUITE_ALLOWED_HOSTS` en vez de desactivarlas.
 
 ### Uso diario
 
@@ -189,8 +183,8 @@ parche añade direcciones reales a su lista de permitidos en vez de desactivarla
 - **Un reproductor por sesión.** El motor responde `500` al segundo consumidor del mismo token de
   reproducción. Volver a pulsar *Reproducir* emite una sesión nueva, y esa es la forma de reabrir el
   canal.
-- **Sin copia de seguridad.** `/opt/acelist/data` guarda la única copia del catálogo (`acelist.db`) y
-  de las capturas. Ningún cron lo toca todavía.
+- **Sin copia de seguridad.** `/opt/acestream-suite/data` guarda la única copia del catálogo
+  (`acestream-suite.db`) y de las capturas. Ningún cron lo toca todavía.
 - **El motor no se comporta como el del autor.** acestream-suite está hecho para el motor 3.1.74 de
   Windows; aquí corre la compilación Linux 3.2.11, que solo emite con `infohash=` y contesta `failed
   to load content` a `id=`. Esa diferencia es la razón de que exista
@@ -198,10 +192,10 @@ parche añade direcciones reales a su lista de permitidos en vez de desactivarla
 - **Un canal atascado parece sano en el catálogo.** Con pares pero sin datos, el motor se queda en
   `prebuf` y el enlace de reproducción no entrega nada. El canal CNN Turk que se usó en las pruebas
   era justo eso.
-- **Actualizar es manual y a propósito**: subir `ACESTREAM_SUITE_VERSION` y
-  `ACESTREAM_SUITE_SHA256`, releer **los dos** parches contra el tarball nuevo, volver a pasar las
-  pruebas y reconstruir (`docker compose build acestream-suite && docker compose up -d
-  acestream-suite`, que deja el puente `acestream-suite-hls` en paz a propósito).
+- **Actualizar es manual y a propósito**: cambiar el código de `acestream-suite/`, volver a pasar las
+  pruebas (`cd acestream-suite && python -m pytest`) y reconstruir (`docker compose build
+  acestream-suite && docker compose up -d acestream-suite`, que deja el puente `acestream-suite-hls`
+  en paz a propósito).
 
 ## Diagnóstico
 
@@ -218,7 +212,6 @@ parche añade direcciones reales a su lista de permitidos en vez de desactivarla
 ## La lista de reproducción permanente, y Dispatcharr
 
     http://192.168.1.245/varios/acestream-suite.m3u      # el enlace, no cambia nunca
-    http://192.168.1.245/varios/acelist.m3u              # el mismo contenido, como copia
     /usr/local/bin/acestream-suite-playlist              # el script que lo mantiene al día
     /etc/cron.d/acestream-suite-playlist                 # cada 15 minutos, a las :05 :20 :35 :50
     /var/log/acestream-suite-playlist.log                # qué hizo cada ejecución
@@ -230,9 +223,8 @@ certificado, y por eso lo puede cargar un móvil, un TV box o un contenedor. Un 
 `acestream-suite-guide.m3u`, lo escribe `scripts/acestream-suite-guide-playlist.py`; es el mismo
 catálogo más la guía. Los dos scripts solo escriben cuando el contenido cambia, así que una lista
 igual conserva su mtime; los dos toman su propio `flock`; y los dos traen `--self-test` (ejecutado
-en el despliegue), `--dry-run` y `--output`. Mientras dure esta versión se escriben también los dos
-nombres viejos — `/srv/www/varios/acelist.m3u` y `acelist-epg.m3u` son copia de
-`acestream-suite.m3u` y `acestream-suite-guide.m3u` — así que nada que lea las rutas viejas se rompe.
+en el despliegue), `--dry-run` y `--output`. Los dos scripts escriben también una copia exacta de su
+lista con el nombre que tenía antes del renombrado, así que nada que lea las rutas viejas se rompe.
 
 Decisiones que van dentro del fichero, y todas importan:
 
@@ -254,21 +246,24 @@ Decisiones que van dentro del fichero, y todas importan:
   clasificar", no una calidad, así que no se pega.
 - **Un catálogo vacío sigue produciendo una lista válida**, no un fichero vacío.
 
-**Dispatcharr** (`http://192.168.1.28:9191`) ya la tiene como cuenta M3U:
+**Dispatcharr** (`http://192.168.1.28:9191`) ya la tiene como cuenta M3U. Registro — salida literal de
+esa fecha (2026-11-05), con los nombres de ese día:
 
-    cuenta 4  AceList (192.168.1.245)  http://192.168.1.245/varios/acelist.m3u
-              refresco cada 6 h · activa · perfiles: 1 (por defecto)
-              registro del refresco: 152 streams creados, 0 actualizados, 0 obsoletos, 0 borrados en 0,3 s
-              grupos nuevos: Movistar, Deportes ES, Deportes int. (los tres habilitados)
+```
+cuenta 4  AceList (192.168.1.245)  http://192.168.1.245/varios/acelist.m3u
+          refresco cada 6 h · activa · perfiles: 1 (por defecto)
+          registro del refresco: 152 streams creados, 0 actualizados, 0 obsoletos, 0 borrados en 0,3 s
+          grupos nuevos: Movistar, Deportes ES, Deportes int. (los tres habilitados)
+```
 
-La etiqueta y la URL de la cuenta son las que tenía antes del renombrado: sigue apuntando a
-`acelist.m3u`, que ahora lleva el mismo contenido que `acestream-suite.m3u`.
+La etiqueta y la URL de la cuenta son las que tenía antes del renombrado: sigue apuntando a la copia
+con el nombre anterior, que lleva el mismo contenido que `acestream-suite.m3u`.
 
 Lo que **todavía no** hace: crear *canales* de Dispatcharr a partir de esos 152 streams. Los streams
 son el origen; los canales son la parrilla que exponen el reproductor de Dispatcharr y el endpoint
 HDHomeRun para el Live TV de Jellyfin. Es una llamada en bloque
 (`/api/channels/channels/from-stream/bulk/`) y una decisión sobre una parrilla compartida, así que
-queda para el dueño. Ver `odd/tasks/acelist.md`.
+queda para el dueño. Ver `odd/tasks/`.
 
 ## Actualización — el catálogo crece a todo el motor (2026-10-09)
 
@@ -299,7 +294,7 @@ propósito en un catálogo doméstico; añadirlos es una línea del script de re
 
 | Enlace | Canales | Qué lleva |
 |---|---|---|
-| `http://192.168.1.245/varios/acestream-suite.m3u` | 540 | todo; es la que consume Dispatcharr, a través de la copia `acelist.m3u` a la que sigue apuntando |
+| `http://192.168.1.245/varios/acestream-suite.m3u` | 540 | todo; es la que consume Dispatcharr, a través de la copia con el nombre anterior a la que sigue apuntando |
 | `http://192.168.1.245/varios/deportes.m3u` | 165 | las categorías `Deportes*`, más cualquier nombre deportivo esté donde esté |
 | `http://192.168.1.245/varios/espana.m3u` | 71 | canales de España: `ES` como país, las categorías españolas o un nombre español |
 | `http://192.168.1.245/varios/hls.m3u` | 196 | deportes o España, en HLS por el puente |
@@ -497,7 +492,7 @@ espera a que todos los canales del catálogo estén comprobados, elimina los que
 los caídos y los sin pares — y ejecuta `acestream-suite-playlist`, que reescribe las cinco. Nunca
 toca un canal sin comprobar: «aún sin verificar» no es «caído».
 
-Antes de borrar nada escribe `/backup/acelist/<fecha>/` con **las tres listas que copia**
+Antes de borrar nada escribe `/backup/acestream-suite/<fecha>/` con **las tres listas que copia**
 (`acestream-suite.m3u`, `deportes.m3u`, `espana.m3u` — `hls.m3u`, `direct.m3u` y
 `acestream-suite-guide.m3u` no están en esa copia), el catálogo completo exportado (`catalogo.json`,
 que el propio *Importar* de acestream-suite acepta, así que el borrado es reversible), una copia
@@ -512,14 +507,14 @@ El trabajo se marca como hecho en `/var/lib/acestream-suite-prune/done` y su reg
 pasada.** El marcador se escribió el 2026-10-09; para el 18/10 el catálogo había acumulado **35
 canales cuya última comprobación era `no_peers`** y ninguno se iba a borrar ya. Se eliminaron con
 `acestream-suite-prune --undo-guard --force --dry-run` y después sin `--dry-run`: copia en
-`/backup/acelist/20261018-221301`, 547 canales, todos `alive`, y el trabajo volvió a escribir el guard
+`/backup/acestream-suite/20261018-221301`, 547 canales, todos `alive`, y el trabajo volvió a escribir el guard
 (`35 deleted`). Así que el cron sigue siendo un no-op hasta que alguien ejecute `--undo-guard` otra
 vez: podar es una decisión manual, no continua.
 
 
 ### Dispatcharr sigue la lista por su cuenta
 
-Dispatcharr lee `acelist.m3u` (la copia de `acestream-suite.m3u`), así que cada vez que ese fichero
+Dispatcharr lee la copia de `acestream-suite.m3u` con el nombre anterior al renombrado, así que cada vez que ese fichero
 se encoge (un canal que deja de emitir sale de la lista en la siguiente pasada) el siguiente
 refresco de la cuenta marca los streams que faltan como **obsoletos** en lugar de borrarlos, y el
 `stale_stream_days` de la cuenta (7) es lo que acaba quitándolos. Tras la primera limpieza la cuenta

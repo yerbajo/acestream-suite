@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
-"""Checks the acestream-suite naming of scripts/ and its one-version compatibility (S1, S3, S4).
+"""Checks that the old product name is gone from scripts/ and that the new identifiers hold (S1, S3).
 
 WHAT IT CHECKS
-    - Los ficheros renombrados existen con su nombre nuevo y los viejos ya no estan.
-    - Cada script lee primero su variable `ACESTREAM_SUITE_*` y despues la vieja `ACELIST_*` (S4).
-    - Las rutas de log, lock y estado por defecto son las nuevas, y las viejas se siguen leyendo
-      mientras sean las unicas que existen (S4).
-    - Las listas publicadas llevan el nombre nuevo y dejan una copia con el viejo, mientras
-      `hls.m3u`, `deportes.m3u`, `espana.m3u`, `direct.m3u` y `madrid.m3u` conservan el suyo (S4).
-    - Los datos no se mueven: la base sigue en `/opt/acelist/data` (S5), y la historia no se
-      reescribe: `odd/tasks/acelist*.md` conserva su nombre (S6).
-    - Lo unico que queda con el nombre viejo es lo que esta lista de arriba permite (S4).
+    - El nombre viejo no aparece en NINGUN fichero de `scripts/`, ni en este mismo test. La
+      compatibilidad de una version (S4) ya se retiro: el producto se llama acestream-suite y lo
+      unico que puede seguir nombrando el fichero viejo de una lista es un alias de DATOS, fuera del
+      repositorio. Las dos mitades del nombre se unen aqui al ejecutar, no en el compilador: si el
+      nombre estuviera entero en este fichero, la auditoria se dispararia contra si misma, y una
+      suma de cadenas se pliega en una constante que acaba dentro del `.pyc`.
+    - Los ficheros renombrados existen con su nombre nuevo, y con el viejo no queda ninguno.
+    - Cada script lee solo su variable `ACESTREAM_SUITE_*`: puesta la vieja y no la nueva, manda el
+      defecto (la vieja se ignora). Con el entorno vacio todo tiene un defecto utilizable.
+    - Las rutas de log, lock, estado y respaldo son las nuevas, y no queda ningun respaldo por ruta
+      vieja (ni `with_legacy`, ni constantes `*_LEGACY`).
+    - Las copias de una lista se piden como DATOS (`ACESTREAM_SUITE_COMPAT_ALIASES`, pares
+      `nuevo=otro` separados por comas): sin la variable no se escribe ninguna copia, la copia se
+      escribe solo cuando la lista principal cambio, y siempre dentro del directorio de salida.
+    - Los marcadores de los documentos (export, mapeo de guia, estado y conjunto en directo) llevan
+      el nombre nuevo, que es lo que la app escribe.
 
     Sin red, sin host y sin ficheros fuera de un directorio temporal que el test borra.
 
@@ -29,6 +36,11 @@ sys.dont_write_bytecode = True
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS = os.path.dirname(HERE)
+
+# El nombre viejo, partido: ver el docstring. `VIEJO` es con lo que se compone un nombre de fichero
+# o de variable que ya no debe existir; `PATRON` es lo que se busca en el texto.
+VIEJO = "".join(("ace", "list"))
+PATRON = re.compile(VIEJO, re.IGNORECASE)
 
 GRUPOS = []
 
@@ -66,19 +78,13 @@ def cargar(fichero, entorno=None):
     return modulo
 
 
-# Referencias al nombre viejo que SI se quedan en esta version, cada una con su razon: si una
-# aparicion no encaja aqui, es un resto del renombrado y el test falla.
-LEGADO = re.compile(
-    r"ACELIST_[A-Z_]+"                                  # variables de entorno viejas (S4)
-    r"|acelist(?:-epg)?\.m3u"                           # listas viejas, como copia (S4)
-    r"|/var/(?:lib|log|lock)/acelist-[a-z-]+"           # estado, log y lock viejos (S4)
-    r"|/usr/local/bin/acelist-[a-z-]+"                  # binarios viejos, como envoltorio (S4)
-    r"|/opt/acelist/data"                               # los datos no se mueven (S5)
-    r"|acelist\.db"                                     # la base y su copia en el respaldo (S5)
-    r"|/backup/acelist"                                 # los respaldos que ya existen
-    r"|odd/tasks/acelist(?:-epg)?\.md"                  # la historia no se reescribe (S6)
-    r'|"(?:acelist|acelist-partido|acelist-partido-live|acelist-epg)"'  # marcadores de la app
-)
+def recorrer(directorio):
+    """Todos los ficheros de un directorio, sin `__pycache__` ni directorios ocultos."""
+    for raiz, carpetas, ficheros in os.walk(directorio):
+        carpetas[:] = sorted(n for n in carpetas if not n.startswith((".", "__")))
+        for nombre in sorted(ficheros):
+            yield os.path.join(raiz, nombre)
+
 
 FICHEROS = (
     "acestream-suite-playlist.py",
@@ -93,149 +99,158 @@ FICHEROS = (
     "crons-install.sh",
 )
 
+# Lo que el renombrado elimino: ni un fichero con estos nombres, ni una constante que los nombre.
+VIEJOS = tuple(VIEJO + resto for resto in (
+    "-playlist.py", "-playlist.cron", "-partido.py", "-partido.cron", "-prune.py",
+    "-prune.cron", "-epg-playlist.py", "-epg-playlist.cron", "-epg-refresh.cron",
+))
+
+SIMBOLOS_VIEJOS = (
+    "with_legacy", "LIVE_FILE_LEGACY", "STATE_PATH_LEGACY", "GUARD_PATH_LEGACY",
+    "PLAYLIST_SCRIPT_LEGACY", "PLAYLIST_FILE_LEGACY", "COMPAT_NAMES", "COMPAT_NAME",
+)
+
+
+@grupo("S3: el nombre viejo no aparece en scripts/, ni en este mismo test")
+def sin_restos():
+    for ruta in recorrer(SCRIPTS):
+        with open(ruta, "r", encoding="utf-8", errors="replace") as fichero:
+            for numero, linea in enumerate(fichero, 1):
+                check(
+                    not PATRON.search(linea),
+                    "%s:%d: el nombre viejo sigue aqui: %r"
+                    % (os.path.relpath(ruta, SCRIPTS), numero, linea.strip()),
+                )
+
 
 @grupo("S3: los ficheros llevan el nombre nuevo y los viejos ya no estan")
 def ficheros():
     for nombre in FICHEROS:
         check(os.path.isfile(os.path.join(SCRIPTS, nombre)), "falta %s" % nombre)
-    for viejo in (
-        "acelist-playlist.py", "acelist-playlist.cron",
-        "acelist-partido.py", "acelist-partido.cron",
-        "acelist-prune.py", "acelist-prune.cron",
-        "acelist-epg-playlist.py", "acelist-epg-playlist.cron",
-        "acelist-epg-refresh.cron",
-    ):
+    for viejo in VIEJOS:
         check(not os.path.exists(os.path.join(SCRIPTS, viejo)), "sigue estando %s" % viejo)
 
 
-@grupo("S3/S4: solo quedan referencias viejas declaradas como compatibilidad")
-def restos():
-    for nombre in FICHEROS:
-        with open(os.path.join(SCRIPTS, nombre), "r", encoding="utf-8") as fichero:
-            texto = fichero.read()
-        check("AceList" not in texto, "%s: la marca vieja sigue en el texto" % nombre)
-        cubiertas = set()
-        for encontrado in LEGADO.finditer(texto):
-            cubiertas.update(range(encontrado.start(), encontrado.end()))
-        for posicion in range(len(texto)):
-            if texto.startswith("acelist", posicion) and posicion not in cubiertas:
-                linea = texto.count("\n", 0, posicion) + 1
-                check(False, "%s:%d: «acelist» sin compatibilidad declarada: %r"
-                      % (nombre, linea, texto[posicion:posicion + 60].splitlines()[0]))
-
-
-@grupo("S4: cada script lee ACESTREAM_SUITE_* y, si no esta, la vieja ACELIST_*")
+@grupo("S3: cada script lee solo su ACESTREAM_SUITE_*, y la vieja se ignora")
 def entorno():
     # Lista: la app, el conjunto en directo y el puente.
-    modulo = cargar("acestream-suite-playlist.py", {"ACELIST_URL": "http://viejo:8083"})
-    check(modulo.ACESTREAM_SUITE_URL == "http://viejo:8083", modulo.ACESTREAM_SUITE_URL)
-    modulo = cargar("acestream-suite-playlist.py",
-                    {"ACELIST_URL": "http://viejo:8083", "ACESTREAM_SUITE_URL": "http://nuevo:8083"})
-    check(modulo.ACESTREAM_SUITE_URL == "http://nuevo:8083", modulo.ACESTREAM_SUITE_URL)
-    modulo = cargar("acestream-suite-playlist.py",
-                    {"ACELIST_PARTIDO_LIVE": "/tmp/viejo/live.json"})
-    check(modulo.LIVE_FILE == "/tmp/viejo/live.json", modulo.LIVE_FILE)
     modulo = cargar("acestream-suite-playlist.py", {})
     check(modulo.ACESTREAM_SUITE_URL == "http://127.0.0.1:8083", modulo.ACESTREAM_SUITE_URL)
     check(modulo.LOG_PATH == "/var/log/acestream-suite-playlist.log", modulo.LOG_PATH)
     check(modulo.LOCK_PATH == "/var/lock/acestream-suite-playlist.lock", modulo.LOCK_PATH)
     check(modulo.LIVE_FILE == "/var/lib/acestream-suite-partido/live.json", modulo.LIVE_FILE)
-    check(modulo.LIVE_FILE_LEGACY == "/var/lib/acelist-partido/live.json", modulo.LIVE_FILE_LEGACY)
+    check(modulo.EXPORT_FORMAT == "acestream-suite", modulo.EXPORT_FORMAT)
+    check(modulo.LIVE_FORMAT == "acestream-suite-partido-live", modulo.LIVE_FORMAT)
+    # Con la nueva puesta, manda la nueva.
+    modulo = cargar("acestream-suite-playlist.py", {"ACESTREAM_SUITE_URL": "http://nuevo:8083"})
+    check(modulo.ACESTREAM_SUITE_URL == "http://nuevo:8083", modulo.ACESTREAM_SUITE_URL)
+    # Con SOLO la vieja puesta, manda el defecto: el nombre viejo ya no es una entrada.
+    modulo = cargar("acestream-suite-playlist.py", {VIEJO + "_URL": "http://old:8083"})
+    check(modulo.ACESTREAM_SUITE_URL == "http://127.0.0.1:8083", modulo.ACESTREAM_SUITE_URL)
 
     # Guia.
-    modulo = cargar("acestream-suite-guide-playlist.py", {"ACELIST_EPG_URL": "http://viejo:8083"})
-    check(modulo.ACESTREAM_SUITE_GUIDE_URL == "http://viejo:8083", modulo.ACESTREAM_SUITE_GUIDE_URL)
-    modulo = cargar("acestream-suite-guide-playlist.py",
-                    {"ACELIST_EPG_URL": "http://viejo:8083",
-                     "ACESTREAM_SUITE_GUIDE_URL": "http://nuevo:8083"})
-    check(modulo.ACESTREAM_SUITE_GUIDE_URL == "http://nuevo:8083", modulo.ACESTREAM_SUITE_GUIDE_URL)
     modulo = cargar("acestream-suite-guide-playlist.py", {})
     check(modulo.OUTPUT == "/srv/www/varios/acestream-suite-guide.m3u", modulo.OUTPUT)
     check(modulo.LOG_PATH == "/var/log/acestream-suite-guide-playlist.log", modulo.LOG_PATH)
     check(modulo.LOCK_PATH == "/var/lock/acestream-suite-guide-playlist.lock", modulo.LOCK_PATH)
+    check(modulo.MAPPING_FORMAT == "acestream-suite-guide", modulo.MAPPING_FORMAT)
+    modulo = cargar("acestream-suite-guide-playlist.py", {"ACESTREAM_SUITE_GUIDE_URL": "http://n:8083"})
+    check(modulo.ACESTREAM_SUITE_GUIDE_URL == "http://n:8083", modulo.ACESTREAM_SUITE_GUIDE_URL)
+    modulo = cargar("acestream-suite-guide-playlist.py", {VIEJO + "_EPG_URL": "http://old:8083"})
+    check(modulo.ACESTREAM_SUITE_GUIDE_URL == "http://127.0.0.1:8083",
+          modulo.ACESTREAM_SUITE_GUIDE_URL)
 
-    # Partido: estado, log y lock nuevos, y el estado viejo aun legible.
-    modulo = cargar("acestream-suite-partido.py", {"ACELIST_PARTIDO_STATE": "/tmp/viejo/state.json"})
-    check(modulo.STATE_PATH == "/tmp/viejo/state.json", modulo.STATE_PATH)
+    # Partido: estado, log y lock nuevos, y ningun estado viejo que leer.
     modulo = cargar("acestream-suite-partido.py", {})
     check(modulo.STATE_PATH == "/var/lib/acestream-suite-partido/state.json", modulo.STATE_PATH)
-    check(modulo.STATE_PATH_LEGACY == "/var/lib/acelist-partido/state.json",
-          modulo.STATE_PATH_LEGACY)
     check(modulo.LIVE_PATH == "/var/lib/acestream-suite-partido/live.json", modulo.LIVE_PATH)
     check(modulo.LOG_PATH == "/var/log/acestream-suite-partido.log", modulo.LOG_PATH)
     check(modulo.LOCK_PATH == "/var/lock/acestream-suite-partido.lock", modulo.LOCK_PATH)
     check(modulo.USER_AGENT.startswith("acestream-suite"), modulo.USER_AGENT)
+    check(modulo.STATE_FORMAT == "acestream-suite-partido", modulo.STATE_FORMAT)
+    check(modulo.LIVE_FORMAT == "acestream-suite-partido-live", modulo.LIVE_FORMAT)
+    check(modulo.EXPORT_FORMAT == "acestream-suite", modulo.EXPORT_FORMAT)
+    check(modulo.MAPPING_FORMAT == "acestream-suite-guide", modulo.MAPPING_FORMAT)
+    modulo = cargar("acestream-suite-partido.py", {"ACESTREAM_SUITE_PARTIDO_LOG": "/tmp/n.log"})
+    check(modulo.LOG_PATH == "/tmp/n.log", modulo.LOG_PATH)
+    modulo = cargar("acestream-suite-partido.py", {VIEJO + "_PARTIDO_LOG": "/tmp/v.log"})
+    check(modulo.LOG_PATH == "/var/log/acestream-suite-partido.log", modulo.LOG_PATH)
 
-    # Poda: guarda, log y lock nuevos; la base NO se mueve (S5).
-    modulo = cargar("acestream-suite-prune.py", {"ACELIST_PRUNE_GUARD": "/tmp/viejo/done"})
-    check(modulo.GUARD_PATH == "/tmp/viejo/done", modulo.GUARD_PATH)
+    # Poda: guarda, log, lock y respaldo nuevos, y la copia de la base con el nombre nuevo.
     modulo = cargar("acestream-suite-prune.py", {})
-    check(modulo.DB_PATH == "/opt/acelist/data/acelist.db", modulo.DB_PATH)
     check(modulo.GUARD_PATH == "/var/lib/acestream-suite-prune/done", modulo.GUARD_PATH)
-    check(modulo.GUARD_PATH_LEGACY == "/var/lib/acelist-prune/done", modulo.GUARD_PATH_LEGACY)
     check(modulo.LOG_PATH == "/var/log/acestream-suite-prune.log", modulo.LOG_PATH)
     check(modulo.LOCK_PATH == "/var/lock/acestream-suite-prune.lock", modulo.LOCK_PATH)
+    check(modulo.BACKUP_DIR == "/backup/acestream-suite", modulo.BACKUP_DIR)
+    check(modulo.BACKUP_DB_NAME == "acestream-suite.db", modulo.BACKUP_DB_NAME)
+    check(modulo.DB_PATH == "/opt/acestream-suite/data/acestream-suite.db", modulo.DB_PATH)
     check(modulo.PLAYLIST_SCRIPT == "/usr/local/bin/acestream-suite-playlist",
           modulo.PLAYLIST_SCRIPT)
-    check(modulo.PLAYLIST_SCRIPT_LEGACY == "/usr/local/bin/acelist-playlist",
-          modulo.PLAYLIST_SCRIPT_LEGACY)
 
 
-@grupo("S4: la ruta vieja de estado se sigue leyendo mientras sea la unica que existe")
-def rutas_viejas():
-    temporal = tempfile.mkdtemp()
-    try:
-        nuevo = os.path.join(temporal, "nuevo.json")
-        viejo = os.path.join(temporal, "viejo.json")
-        for modulo in (cargar("acestream-suite-playlist.py"), cargar("acestream-suite-partido.py"),
-                       cargar("acestream-suite-prune.py")):
-            check(modulo.with_legacy(nuevo, nuevo, viejo) == nuevo, "sin ficheros: la nueva")
-            with open(viejo, "w") as fichero:
-                fichero.write("x")
-            check(modulo.with_legacy(nuevo, nuevo, viejo) == viejo, "solo la vieja: la vieja")
-            with open(nuevo, "w") as fichero:
-                fichero.write("x")
-            check(modulo.with_legacy(nuevo, nuevo, viejo) == nuevo, "las dos: la nueva")
-            check(modulo.with_legacy("/tmp/otra.json", nuevo, viejo) == "/tmp/otra.json",
-                  "una ruta pedida a mano no se cambia por la vieja")
-            os.unlink(nuevo)
-            os.unlink(viejo)
-    finally:
-        shutil.rmtree(temporal)
+@grupo("S4: ninguna ruta se respalda con el nombre viejo (no quedan ayudantes de compatibilidad)")
+def sin_respaldos():
+    for fichero in ("acestream-suite-playlist.py", "acestream-suite-guide-playlist.py",
+                    "acestream-suite-partido.py", "acestream-suite-prune.py"):
+        modulo = cargar(fichero)
+        for simbolo in SIMBOLOS_VIEJOS:
+            check(not hasattr(modulo, simbolo), "%s: sigue existiendo %s" % (fichero, simbolo))
+        # `env` recibe la variable nueva y el defecto, y nada mas.
+        check(modulo.env("ACESTREAM_SUITE_NO_EXISTE", "d") == "d", fichero)
 
 
-@grupo("S4: la lista nueva se escribe y deja la copia con el nombre viejo")
-def listas():
-    modulo = cargar("acestream-suite-playlist.py")
-    check([nombre for nombre, _, _, _, _ in modulo.PLAYLISTS] == [
-        "acestream-suite.m3u", "deportes.m3u", "espana.m3u", "hls.m3u", "direct.m3u",
-    ], [nombre for nombre, _, _, _, _ in modulo.PLAYLISTS])
-    check(modulo.COMPAT_NAMES == {"acestream-suite.m3u": "acelist.m3u"}, modulo.COMPAT_NAMES)
+@grupo("S4: las copias de una lista se piden como datos y no salen del directorio de salida")
+def alias_copias():
+    lista = cargar("acestream-suite-playlist.py", {})
+    check(lista.COMPAT_ALIASES == {}, lista.COMPAT_ALIASES)   # entorno vacio: ninguna copia
+    check(lista.compat_aliases("") == {}, lista.compat_aliases(""))
+    check(lista.compat_aliases("acestream-suite.m3u=otro.m3u")
+          == {"acestream-suite.m3u": ["otro.m3u"]}, lista.compat_aliases("acestream-suite.m3u=x"))
+    check(lista.compat_aliases(" acestream-suite.m3u = otro.m3u , ")
+          == {"acestream-suite.m3u": ["otro.m3u"]}, lista.compat_aliases(" con espacios "))
+    check(lista.compat_aliases("a.m3u=b.m3u,c.m3u=d.m3u")
+          == {"a.m3u": ["b.m3u"], "c.m3u": ["d.m3u"]}, lista.compat_aliases("dos pares"))
+    check(lista.compat_aliases("sin-igual") == {}, lista.compat_aliases("sin-igual"))
+    check(lista.compat_aliases("a.m3u=") == {}, lista.compat_aliases("a.m3u="))
+    # La regla de seguridad: una copia nunca escribe fuera del directorio de salida.
+    check(lista.compat_aliases("a.m3u=../fuera.m3u") == {}, lista.compat_aliases(".."))
+    check(lista.compat_aliases("a.m3u=/tmp/fuera.m3u") == {}, lista.compat_aliases("absoluta"))
 
+    # Con la variable puesta, el modulo la lee al importarse: es lo que hace el cron del host.
+    modulo = cargar("acestream-suite-playlist.py",
+                    {"ACESTREAM_SUITE_COMPAT_ALIASES": "acestream-suite.m3u=otro.m3u"})
+    check(modulo.COMPAT_ALIASES == {"acestream-suite.m3u": ["otro.m3u"]}, modulo.COMPAT_ALIASES)
     temporal = tempfile.mkdtemp()
     try:
         built = [(nombre, "#EXTM3U\n", 0) for nombre, _, _, _, _ in modulo.PLAYLISTS]
-        built.append(("madrid.m3u", "#EXTM3U\n", 0))
-        modulo.save_all(built, temporal)
-        for nombre in ("acestream-suite.m3u", "acelist.m3u", "deportes.m3u", "espana.m3u",
-                       "hls.m3u", "direct.m3u", "madrid.m3u"):
-            check(os.path.isfile(os.path.join(temporal, nombre)), "no se escribio %s" % nombre)
-        with open(os.path.join(temporal, "acelist.m3u")) as fichero:
-            copia = fichero.read()
-        check(copia == "#EXTM3U\n", copia)
+        escrito = modulo.save_all(built, temporal)
+        check(sorted(os.listdir(temporal)) == sorted(
+            [nombre for nombre, _, _, _, _ in modulo.PLAYLISTS] + ["otro.m3u"]
+        ), sorted(os.listdir(temporal)))
+        with open(os.path.join(temporal, "otro.m3u")) as fichero:
+            check(fichero.read() == "#EXTM3U\n", "la copia no lleva el texto de la lista")
+        # Solo cuando la lista principal cambio: un fichero igual no reescribe la copia.
+        os.unlink(os.path.join(temporal, "otro.m3u"))
+        check(escrito["acestream-suite.m3u"] is True, escrito)
+        check(modulo.save_all(built, temporal)["acestream-suite.m3u"] is False, "igual, no se escribe")
+        check(not os.path.exists(os.path.join(temporal, "otro.m3u")), "sin cambio no hay copia")
     finally:
         shutil.rmtree(temporal)
 
-    guia = cargar("acestream-suite-guide-playlist.py")
-    check(guia.compat_copy("/srv/www/varios/acestream-suite-guide.m3u")
-          == "/srv/www/varios/acelist-epg.m3u", guia.compat_copy("/srv/www/varios/x.m3u"))
-    check(guia.compat_copy("/tmp/otra.m3u") is None, guia.compat_copy("/tmp/otra.m3u"))
+    # La guia: el mismo mecanismo, y un destino ajeno no lleva copias al lado.
+    guia = cargar("acestream-suite-guide-playlist.py",
+                  {"ACESTREAM_SUITE_COMPAT_ALIASES": "acestream-suite-guide.m3u=otro-guia.m3u"})
+    check(guia.compat_copies(guia.OUTPUT) == ("otro-guia.m3u",), guia.compat_copies(guia.OUTPUT))
+    check(guia.compat_copies("/tmp/otra.m3u") == (), guia.compat_copies("/tmp/otra.m3u"))
     temporal = tempfile.mkdtemp()
     try:
         destino = os.path.join(temporal, "acestream-suite-guide.m3u")
-        guia.save_output("#EXTM3U\n", destino)
-        for nombre in ("acestream-suite-guide.m3u", "acelist-epg.m3u"):
+        check(guia.save_output("#EXTM3U\n", destino) is True, "el primer guardado escribe")
+        for nombre in ("acestream-suite-guide.m3u", "otro-guia.m3u"):
             check(os.path.isfile(os.path.join(temporal, nombre)), "no se escribio %s" % nombre)
+        os.unlink(os.path.join(temporal, "otro-guia.m3u"))
+        check(guia.save_output("#EXTM3U\n", destino) is False, "un fichero igual no se reescribe")
+        check(not os.path.exists(os.path.join(temporal, "otro-guia.m3u")), "sin cambio no hay copia")
         otro = tempfile.mkdtemp()
         try:
             guia.save_output("#EXTM3U\n", os.path.join(otro, "otra.m3u"))
@@ -246,20 +261,26 @@ def listas():
         shutil.rmtree(temporal)
 
 
-@grupo("S4: los marcadores de formato de la app no se renombran")
+@grupo("S3: los marcadores de los documentos llevan el nombre nuevo")
 def formatos():
-    # `format: "acelist"` lo escribe la app en su export y `/epg.json` marca `acelist-epg`: son el
-    # contrato con el contenedor, no la marca del producto, y renombrarlos rompe el par.
     guia = cargar("acestream-suite-guide-playlist.py")
-    check(guia.MAPPING_FORMAT == "acelist-epg", guia.MAPPING_FORMAT)
+    check(guia.MAPPING_FORMAT == "acestream-suite-guide", guia.MAPPING_FORMAT)
+    check(guia.EXPORT_FORMAT == "acestream-suite", guia.EXPORT_FORMAT)
     partido = cargar("acestream-suite-partido.py")
-    check(partido.EXPORT_FORMAT == "acelist", partido.EXPORT_FORMAT)
-    check(partido.MAPPING_FORMAT == "acelist-epg", partido.MAPPING_FORMAT)
-    # El estado y el conjunto en directo viejos tienen que seguir leyendose (S4).
-    check(partido.STATE_FORMAT == "acelist-partido", partido.STATE_FORMAT)
-    check(partido.LIVE_FORMAT == "acelist-partido-live", partido.LIVE_FORMAT)
+    check(partido.EXPORT_FORMAT == "acestream-suite", partido.EXPORT_FORMAT)
+    check(partido.MAPPING_FORMAT == "acestream-suite-guide", partido.MAPPING_FORMAT)
+    check(partido.STATE_FORMAT == "acestream-suite-partido", partido.STATE_FORMAT)
+    check(partido.LIVE_FORMAT == "acestream-suite-partido-live", partido.LIVE_FORMAT)
+    # El estado y el conjunto en directo que escribe el trabajo son los que lee la lista.
     lista = cargar("acestream-suite-playlist.py")
-    check(lista.LIVE_FORMAT == "acelist-partido-live", lista.LIVE_FORMAT)
+    check(lista.LIVE_FORMAT == partido.LIVE_FORMAT, lista.LIVE_FORMAT)
+    # Un documento con el marcador nuevo se lee; uno viejo ya no.
+    check(lista.live_entries({"format": partido.LIVE_FORMAT, "channels": {}}) == {},
+          "el marcador nuevo se acepta")
+    check(lista.live_entries({"format": "acestream-suite-partido", "channels": {}}) == {},
+          "otro marcador no da conjunto")
+    check(partido.state_document('{"format": "%s", "done": []}' % partido.STATE_FORMAT)["done"] == [],
+          "el estado con el marcador nuevo se lee")
 
 
 @grupo("S3: crons-install.sh instala los jobs nuevos")
@@ -276,7 +297,7 @@ def cron_install():
 @grupo("S1: los self-test de los scripts siguen pasando")
 def self_tests():
     for fichero in ("acestream-suite-playlist.py", "acestream-suite-partido.py",
-                    "acestream-suite-guide-playlist.py"):
+                    "acestream-suite-guide-playlist.py", "acestream-suite-prune.py"):
         modulo = cargar(fichero)
         modulo.self_test()
 

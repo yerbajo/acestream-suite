@@ -4,22 +4,22 @@ acestream-suite is a catalogue of AceStream links: channels with a Content ID, a
 against the engine, a captured frame of each channel, categories, search and a play button. It is
 the front end the AceStream search service never had.
 
-> **The product used to be called AceList**: it is `acestream-suite` now, and the rename is recorded in
-> `odd/tasks/acestream-suite-rename.md`. Compatibility of one version is in force — the old
-> `/varios/acelist.m3u` and `/varios/acelist-epg.m3u` are kept as copies of the new lists, `ACELIST_*`
-> variables are still read when the new ones are absent, and `/usr/local/bin/acelist-*` are wrappers of
-> the new binaries. The AceStream engine keeps its own name, and the data has not moved.
+> **The product is `acestream-suite`.** The application's source is part of this repository
+> (`acestream-suite/`), so no release is downloaded and no patch files are applied; the list names, the
+> `ACESTREAM_SUITE_*` variables and the `/usr/local/bin/acestream-suite-*` binaries carry that name, and
+> the names of the product before the rename no longer exist. The AceStream engine keeps its own name.
+> The rename is recorded in `odd/tasks/acestream-suite-rename.md`.
 
 | | |
 |---|---|
 | URL | `http://192.168.1.245:8083` (LAN only, no authentication) |
 | Host | `dev.albertucho.home` — 192.168.1.245, RHEL 8.7 |
 | Container | `acestream-suite`, from the locally built image `acestream-suite:1.3.0` |
-| Upstream | `https://github.com/fabiomb/AceList` tag `v1.3.0`, plus `acestream-suite/acestream-suite-lan.patch` and `acestream-suite/acestream-suite-guide.patch` |
+| Source | this repository: `acestream-suite/` holds the application (`app/`, `migrations/`, `pyproject.toml`, `alembic.ini`) and the `Dockerfile` that builds it — no downloaded release, no patch files |
 | Engine | the AceStream engine of **192.168.1.28**, inside its WireGuard tunnel |
 | Guide (EPG) | this service carries it — `docs/acestream-suite-guide.md` |
-| Plan and evidence | `odd/tasks/acelist.md` |
-| Files on the host | `/opt/acestream-suite/` (compose, Dockerfile, entrypoint, both patches, `data/`) |
+| Plan and evidence | `odd/tasks/acestream-suite-rename.md`; the earlier plans under `odd/tasks/` keep the names they were created with |
+| Files on the host | `/opt/acestream-suite/` (compose, Dockerfile, entrypoint, the HLS bridge, the app source tree, `data/`) |
 
 ## Why the engine is on another host
 
@@ -36,24 +36,19 @@ for both the API and the play link. Nothing on .28 had to change for this deploy
 
 ## How it is built
 
-Upstream publishes no image, so the image is built here, from the pinned release tarball:
+The image is built here, from this repository's checkout. There is no release tarball and no patch
+file: the application the host runs is the source in `acestream-suite/`.
 
-- Tarball of tag `v1.3.0`, checked against
-  `487bee2f792d2bd30029a32bbd33b9f023cfc0d033c05fdb74bb2e169c72d879`.
-- Three local patches applied on top, in this order: `acestream-suite-lan.patch` (three ideas: LAN
-  host allow-list, a play mode with no local player, and the engine's `infohash` dialect),
-  `acestream-suite-guide.patch` (the guide, merged in from the duplicate deployment on 2026-10-14)
-  and `acestream-suite-search.patch` (the search page against `acesearch`, and its setting,
-  2026-11-05). The LAN patch exists because the repo carries no LICENSE — running it is fine,
-  redistributing a fork or an image is not — and because upstream's `docs/engine-api.md` states
-  the app should stay on loopback, so an upstream pull request would be arguing with its own
-  design.
+- `acestream-suite/Dockerfile` takes `pyproject.toml`, `alembic.ini`, `app/` and `migrations/` from the
+  checkout with `COPY`, installs that tree editable, and copies the two binary assets — the favicon and
+  the wordmark — into `app/web/static/`.
 - `ffmpeg` is installed in the image: the screenshots and the availability verification read the
   live stream through it.
-- `python:3.12-slim`, which is one of the two versions upstream's CI tests.
+- `python:3.12-slim` as the base, the application state in `/data` (`ACESTREAM_SUITE_DATA_DIR`) and
+  port 8000 inside the container.
 
 The deployment files (`acestream-suite/Dockerfile`, `docker-compose.yml`, `entrypoint.sh`,
-`hls-bridge.py` and the three patches) are versioned in this repository; they first landed in commit
+`hls-bridge.py` and the app source tree) are versioned in this repository; they first landed in commit
 `0ebf092`, which recorded the state the host was already running, so the guide merge that followed
 had files to change and revert.
 
@@ -61,10 +56,11 @@ had files to change and revert.
 
 This service now carries the guide too: XMLTV sources, a channel↔guide mapping, a 72 h programme
 window, a now/next cell and a grid in the UI, and `/epg.xml` plus a guide-carrying playlist. It was
-built and proved in a duplicate called `AceListEPG` so this service was not the test bed, and merged
-here on 2026-10-14. The operator runbook — sources, refresh, mapping, outputs and troubleshooting —
-is **`docs/acestream-suite-guide.md`** (+ `.es.md`); the plan and its evidence are
-`odd/tasks/acelist-epg.md`.
+built and proved in a duplicate — a second deployment of the product under the name it had then — so
+this service was not the test bed, and merged here on 2026-10-14. The operator runbook — sources,
+refresh, mapping, outputs and troubleshooting — is **`docs/acestream-suite-guide.md`** (+ `.es.md`);
+the plan and its evidence are the files under `odd/tasks/`, which keep the names they were created
+with.
 
 ## Searching the index (acesearch)
 
@@ -103,19 +99,21 @@ catalogue does not.
 Action, on the workstation:
 
 ```bash
-cd ~/webserver/acestream-suite
-scp Dockerfile entrypoint.sh docker-compose.yml \
-    acestream-suite-lan.patch acestream-suite-guide.patch root@192.168.1.245:/opt/acestream-suite/
+cd ~/webserver
+scp -r acestream-suite/Dockerfile acestream-suite/docker-compose.yml acestream-suite/entrypoint.sh \
+    acestream-suite/hls-bridge.py acestream-suite/pyproject.toml acestream-suite/alembic.ini \
+    acestream-suite/app acestream-suite/migrations acestream-suite/assets \
+    root@192.168.1.245:/opt/acestream-suite/
 ```
 
 Action, on the host:
 
 ```bash
-mkdir -p /opt/acelist/data && chown 1000:1000 /opt/acelist/data
+mkdir -p /opt/acestream-suite/data && chown 1000:1000 /opt/acestream-suite/data
 cd /opt/acestream-suite && docker compose build && docker compose up -d
 ```
 
-Record:
+Record — literal output of that date (2026-10-09), with the names of that day, before the rename:
 
 ```
 #13 writing image sha256:2c93dd862e9d5afd2853a983042133696dd36c518990401ce8844f94b2f36052 done
@@ -125,8 +123,7 @@ acelist	Up 10 seconds (health: starting)
 {"status":"ok","app":"AceList","version":"1.3.0"}
 ```
 
-That output is from 2026-10-09, before the rename, so the image, the container and the health answer
-carry the names of that day; a deployment today names the image and the container `acestream-suite`.
+A deployment today names the image and the container `acestream-suite`.
 
 The `chown` matters: Docker creates a missing bind source as a root-owned empty directory, and the
 container runs as `1000:1000` (the host's `ingenieria` account), so anything else is unwritable.
@@ -152,8 +149,8 @@ Record:
 ```
 
 The first is the app answering the LAN address; the second and third prove the Host check and the CSRF
-check are still doing their job, which is why the patch adds real addresses to their allow-list
-instead of switching them off.
+check are still doing their job, which is why the app reads the real addresses from
+`ACESTREAM_SUITE_ALLOWED_HOSTS` instead of switching them off.
 
 ### Operating it
 
@@ -181,18 +178,18 @@ instead of switching them off.
   separate task.
 - **One player per session.** The engine answers a second consumer of the same playback token with
   `500`. Pressing *Play* again issues a new session, which is the way to reopen a stream.
-- **No backup.** `/opt/acelist/data` holds the only copy of the catalogue (`acelist.db`) and the
-  screenshots. No cron touches it yet.
+- **No backup.** `/opt/acestream-suite/data` holds the only copy of the catalogue
+  (`acestream-suite.db`) and the screenshots. No cron touches it yet.
 - **The engine's behaviour is not upstream's.** acestream-suite targets the Windows 3.1.74 engine;
   this deployment runs the Linux 3.2.11 build, which only streams with `infohash=` and answers
   `failed to load content` to `id=`. That difference is why `ACESTREAM_SUITE_STREAM_PARAM=infohash`
   exists.
 - **A stalled channel looks healthy in the catalogue.** With peers but no data the engine sits in
   `prebuf` and the play link yields nothing. The CNN Turk entry used during testing was exactly that.
-- **Updating is manual and deliberate**: bump `ACESTREAM_SUITE_VERSION` and
-  `ACESTREAM_SUITE_SHA256`, re-read **both** patches against the new tarball, re-run the tests,
-  rebuild (`docker compose build acestream-suite && docker compose up -d acestream-suite`, which
-  deliberately leaves the `acestream-suite-hls` bridge alone).
+- **Updating is manual and deliberate**: change the source under `acestream-suite/`, re-run the tests
+  (`cd acestream-suite && python -m pytest`), rebuild (`docker compose build acestream-suite &&
+  docker compose up -d acestream-suite`, which deliberately leaves the `acestream-suite-hls` bridge
+  alone).
 
 ## Troubleshooting
 
@@ -209,7 +206,6 @@ instead of switching them off.
 ## The permanent playlist, and Dispatcharr
 
     http://192.168.1.245/varios/acestream-suite.m3u      # the link, never changes
-    http://192.168.1.245/varios/acelist.m3u              # the same content, kept as a copy
     /usr/local/bin/acestream-suite-playlist              # the script that keeps it current
     /etc/cron.d/acestream-suite-playlist                 # every 15 minutes, at :05 :20 :35 :50
     /var/log/acestream-suite-playlist.log                # what each run did
@@ -221,9 +217,8 @@ and no certificate, and why a phone, a TV box or a container can load it. A sixt
 `acestream-suite-guide.m3u`, is written by `scripts/acestream-suite-guide-playlist.py`; it is the
 same catalogue plus the guide. Both scripts write only when the content differs, so an unchanged
 playlist keeps its mtime; both take their own `flock`; and both carry a `--self-test` (run in the
-deployment) plus `--dry-run` and `--output`. While this version lasts the two old names are written
-too — `/srv/www/varios/acelist.m3u` and `acelist-epg.m3u` are copies of `acestream-suite.m3u` and
-`acestream-suite-guide.m3u` — so nothing that reads the old paths breaks.
+deployment) plus `--dry-run` and `--output`. Both scripts also write an exact copy of their list
+under the name it had before the rename, so nothing that reads the old paths breaks.
 
 Decisions inside the file, all of them load-bearing:
 
@@ -245,20 +240,23 @@ Decisions inside the file, all of them load-bearing:
   it is not appended.
 - **An empty catalog still produces a valid playlist**, not an empty file.
 
-**Dispatcharr** (`http://192.168.1.28:9191`) now has it as an M3U account:
+**Dispatcharr** (`http://192.168.1.28:9191`) has it as an M3U account. Record — literal output of
+that date (2026-11-05), with the names of that day:
 
-    account 4  AceList (192.168.1.245)  http://192.168.1.245/varios/acelist.m3u
-               refresh every 6 h · active · profiles: 1 (default)
-               refresh log: 152 streams created, 0 updated, 0 stale, 0 removed in 0.3 s
-               new channel groups: Movistar, Deportes ES, Deportes int. (all enabled)
+```
+account 4  AceList (192.168.1.245)  http://192.168.1.245/varios/acelist.m3u
+           refresh every 6 h · active · profiles: 1 (default)
+           refresh log: 152 streams created, 0 updated, 0 stale, 0 removed in 0.3 s
+           new channel groups: Movistar, Deportes ES, Deportes int. (all enabled)
+```
 
-The account's own label and URL are the ones it had before the rename: it is still pointed at
-`acelist.m3u`, which now holds the same content as `acestream-suite.m3u`.
+The account's own label and URL are the ones it had before the rename: it is still pointed at the
+pre-rename copy, which holds the same content as `acestream-suite.m3u`.
 
 What this does **not** do yet: create Dispatcharr *channels* from those 152 streams. Streams are the
 source; channels are the lineup that Dispatcharr's own player and the HDHomeRun endpoint expose to
 Jellyfin's Live TV. That is one bulk call (`/api/channels/channels/from-stream/bulk/`) and a decision
-about the shared lineup, so it was left for the owner. See `odd/tasks/acelist.md`.
+about the shared lineup, so it was left for the owner. See `odd/tasks/`.
 
 ## Update — the catalogue grows to the whole engine (2026-10-09)
 
@@ -289,7 +287,7 @@ of a household catalogue; adding them is one line in the harvest script.
 
 | Link | Channels | What it holds |
 |---|---|---|
-| `http://192.168.1.245/varios/acestream-suite.m3u` | 540 | everything; this is the one Dispatcharr consumes, through the `acelist.m3u` copy it is still pointed at |
+| `http://192.168.1.245/varios/acestream-suite.m3u` | 540 | everything; this is the one Dispatcharr consumes, through the pre-rename copy it is still pointed at |
 | `http://192.168.1.245/varios/deportes.m3u` | 165 | the `Deportes*` categories, plus a sports name anywhere else |
 | `http://192.168.1.245/varios/espana.m3u` | 71 | channels from Spain: `ES` as its country, the Spanish categories, or a Spanish name |
 | `http://192.168.1.245/varios/hls.m3u` | 196 | sports or Spanish, as HLS through the bridge |
@@ -479,7 +477,7 @@ every channel in the catalogue has been checked, then removes the ones whose lat
 `alive` — the offline and the peer-less — and runs `acestream-suite-playlist`, which rewrites all
 five. It never touches a channel that has not been checked: "not verified yet" is not "offline".
 
-Before deleting anything it writes `/backup/acelist/<stamp>/` with **the three playlists it copies**
+Before deleting anything it writes `/backup/acestream-suite/<stamp>/` with **the three playlists it copies**
 (`acestream-suite.m3u`, `deportes.m3u`, `espana.m3u` — `hls.m3u`, `direct.m3u` and
 `acestream-suite-guide.m3u` are not in that backup), the full catalogue export (`catalogo.json`,
 which acestream-suite's own *Importar* accepts, so the deletion is reversible), a consistent copy of
@@ -495,14 +493,14 @@ The job marks itself done in `/var/lib/acestream-suite-prune/done` and its log i
 The marker was written on 2026-10-09; by 18/10 the catalogue had accumulated **35 channels whose last
 check was `no_peers`** and none of them would ever be removed. They were deleted with
 `acestream-suite-prune --undo-guard --force --dry-run` and then without `--dry-run`: backup in
-`/backup/acelist/20261018-221301`, 547 channels left, all `alive`, and the job wrote the guard again
+`/backup/acestream-suite/20261018-221301`, 547 channels left, all `alive`, and the job wrote the guard again
 (`35 deleted`). So the cron keeps being a no-op until someone runs `--undo-guard` again: pruning is a
 manual decision, not a continuous one.
 
 
 ### Dispatcharr follows the playlist on its own
 
-Dispatcharr reads `acelist.m3u` (the copy of `acestream-suite.m3u`), so every time that file shrinks
+Dispatcharr reads the pre-rename copy of `acestream-suite.m3u`, so every time that file shrinks
 (a channel that stops streaming leaves the playlist on the next run) the next refresh of the account
 marks the missing streams **stale** instead of deleting them, and the account's `stale_stream_days`
 (7) is what eventually removes them. After the first cleanup the account reported `1072 marked

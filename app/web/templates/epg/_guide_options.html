@@ -1,0 +1,7 @@
+{# Options for one row's guide picker on the mapping screen; htmx swaps them into the `<select>`.
+   Empty means "no coincidence", which is a normal answer and not an error. #}
+{% for guide in guides %}
+<option value="{{ guide.id }}">{{ guide.name }}</option>
+{% else %}
+<option value="">Sin coincidencias</option>
+{% endfor %}

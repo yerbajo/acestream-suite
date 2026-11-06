@@ -8,7 +8,7 @@
 # This is a ONE-SHOT job. Every run asks the database two things: how many channels have never been
 # checked, and how many are checked and not alive. While there is anything unchecked it writes one
 # line to /var/log/acestream-suite-prune.log and leaves. When the verification has finished it takes the
-# backup (/backup/acelist/<stamp>/: the three playlists, the full export, a copy of the database and
+# backup (/backup/acestream-suite/<stamp>/: the three playlists, the full export, a copy of the database and
 # the list of what it is about to delete), deletes through acestream-suite's own API — which takes the check
 # history and the screenshots with each channel — regenerates the playlists and writes a guard in
 # /var/lib/acestream-suite-prune/done. From then on every run is a no-op, so this cron entry can stay.

@@ -15,6 +15,14 @@
 #
 # The script takes its own flock and logs to /var/log/acestream-suite-playlist.log, so there is nothing
 # to collect here: a run that overlaps the previous one says so in that log and exits.
+#
+# An alias is where a consumer still asks for another file name: the script copies a list under the
+# names in ACESTREAM_SUITE_COMPAT_ALIASES (`new-file=other-file`, comma-separated) and writes nothing
+# extra when it is unset. The value lives on the host, not in git, and the line below loads it with
+# POSIX sh; the `[ -r ... ]` guard is what keeps the job working on a host without the file.
+# The file must EXPORT its values (`export ACESTREAM_SUITE_COMPAT_ALIASES=...`, or `set -a` on
+# its first line): a plain assignment in a sourced file is a shell variable and never reaches
+# the binary, which is a child process.
 SHELL=/bin/bash
 PATH=/sbin:/bin:/usr/sbin:/usr/bin:/usr/local/bin
-5,20,35,50 * * * * root /usr/local/bin/acestream-suite-playlist >/dev/null 2>&1
+5,20,35,50 * * * * root [ -r /etc/acestream-suite.env ] && . /etc/acestream-suite.env; /usr/local/bin/acestream-suite-playlist >/dev/null 2>&1

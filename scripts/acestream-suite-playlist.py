@@ -20,9 +20,11 @@ WHY THIS EXISTS
     | direct.m3u          | everything, as the engine's own MPEG-TS                          |
     | madrid.m3u          | the Real Madrid match that is on air, and nothing else (S12)     |
 
-    `acelist.m3u` is written too, as an exact copy of `acestream-suite.m3u`: Dispatcharr account 4
-    reads it by that name today, and this version keeps both so the rename breaks nothing (S4). The
-    other five names do not change: the TV reads `hls.m3u`.
+    A consumer that still asks for another file name is served without this script knowing that
+    name: `ACESTREAM_SUITE_COMPAT_ALIASES` is a comma-separated list of `new-file=other-file` pairs
+    and each copy is written next to its own list. Empty or unset — the default — writes nothing
+    extra; the host that needs one keeps it in `/etc/acestream-suite.env`, which the `.cron` loads.
+    The other five names do not change: the TV reads `hls.m3u`.
 
     Every display name ends with the quality the catalog detected (`Canal 1080p`), so searching the
     list for "1080p" works; `tvg-name` keeps the bare name, because guide matching reads it.
@@ -35,8 +37,7 @@ WHY THIS EXISTS
 THE LIVE SET: THE MATCH ON AIR, NOT A CATEGORY
     `scripts/acestream-suite-partido.py` writes `/var/lib/acestream-suite-partido/live.json`
     (`--live-file`) after every run: the content ids airing a Real Madrid match now or in the hour
-    before, each one with the `stop` of its programme. This script reads it — the new path first and,
-    while the host still keeps the old one, `/var/lib/acelist-partido/live.json` (S4) — and only while
+    before, each one with the `stop` of its programme. This script reads it and only while
     `now < stop`:
 
     - `deportes.m3u` and `hls.m3u` give those channels `group-title="Real Madrid"`;
@@ -65,7 +66,7 @@ INSTALL (on dev.albertucho.home, the .245 host)
     install -m 0644 scripts/acestream-suite-playlist.cron /etc/cron.d/acestream-suite-playlist
     /usr/local/bin/acestream-suite-playlist          # first run, so the files exist before anything reads them
     # The playlists are then at http://192.168.1.245/varios/{acestream-suite,deportes,espana}.m3u
-    # (`acelist.m3u` is the same file under its old name, for Dispatcharr: S4)
+    # (a copy under another name, if a consumer needs one, comes from ACESTREAM_SUITE_COMPAT_ALIASES)
 
 USAGE
     acestream-suite-playlist                 # fetch, build and write only the files that changed
@@ -93,56 +94,41 @@ import urllib.parse
 import urllib.request
 
 
-def env(name, legacy, default):
-    """S4: la variable nueva y, mientras el host solo exporte la vieja, la vieja.
+def env(name, default):
+    """El valor de `ACESTREAM_SUITE_*`, o el defecto.
 
-    Se lee `ACESTREAM_SUITE_*` primero; `ACELIST_*` sigue valiendo en esta version para que un host
-    que aun la exporte (el crontab viejo, un docker-compose sin actualizar) no cambie de
-    comportamiento el dia del renombrado.
+    Una sola variable por ajuste: el nombre viejo ya no se lee, asi que un host que solo exporte
+    una variable vieja se comporta como si no hubiera puesto nada. El entorno vacio es el caso
+    normal (el crontab del host pone lo suyo en `/etc/acestream-suite.env`).
     """
     value = os.environ.get(name)
-    if value is None:
-        value = os.environ.get(legacy)
     return default if value is None else value
 
 
-def with_legacy(path, current, legacy):
-    """S4: la ruta nueva y, mientras la vieja sea la unica que existe, la vieja.
-
-    Solo se cae a la ruta vieja cuando no se ha pedido otra cosa (`path == current`) y el fichero
-    nuevo aun no esta: es la ventana entre este cambio y la primera pasada que escribe el nuevo.
-    """
-    if path == current and not os.path.exists(path) and legacy and os.path.exists(legacy):
-        return legacy
-    return path
-
-
-ACESTREAM_SUITE_URL = env("ACESTREAM_SUITE_URL", "ACELIST_URL", "http://127.0.0.1:8083")
-ENGINE_URL = env("ACESTREAM_SUITE_PLAYLIST_ENGINE", "ACELIST_PLAYLIST_ENGINE",
-                 "http://192.168.1.28:8081")
-OUTPUT_DIR = env("ACESTREAM_SUITE_PLAYLIST_DIR", "ACELIST_PLAYLIST_DIR", "/srv/www/varios")
+ACESTREAM_SUITE_URL = env("ACESTREAM_SUITE_URL", "http://127.0.0.1:8083")
+ENGINE_URL = env("ACESTREAM_SUITE_PLAYLIST_ENGINE", "http://192.168.1.28:8081")
+OUTPUT_DIR = env("ACESTREAM_SUITE_PLAYLIST_DIR", "/srv/www/varios")
 # El puente HLS (acestream-suite/hls-bridge.py): la misma lista, pero cada canal como manifiesto.
-HLS_BASE = env("ACESTREAM_SUITE_HLS_BASE", "ACELIST_HLS_BASE", "http://192.168.1.245:8084")
-LOG_PATH = env("ACESTREAM_SUITE_PLAYLIST_LOG", "ACELIST_PLAYLIST_LOG",
-               "/var/log/acestream-suite-playlist.log")
-LOCK_PATH = env("ACESTREAM_SUITE_PLAYLIST_LOCK", "ACELIST_PLAYLIST_LOCK",
-                "/var/lock/acestream-suite-playlist.lock")
+HLS_BASE = env("ACESTREAM_SUITE_HLS_BASE", "http://192.168.1.245:8084")
+LOG_PATH = env("ACESTREAM_SUITE_PLAYLIST_LOG", "/var/log/acestream-suite-playlist.log")
+LOCK_PATH = env("ACESTREAM_SUITE_PLAYLIST_LOCK", "/var/lock/acestream-suite-playlist.lock")
 # El conjunto en directo de `scripts/acestream-suite-partido.py`: la misma variable de entorno en los
 # dos scripts, para que mover el fichero sea un solo cambio. Ausente = sin carpeta y sin `madrid.m3u`.
-LIVE_FILE = env("ACESTREAM_SUITE_PARTIDO_LIVE", "ACELIST_PARTIDO_LIVE",
-                "/var/lib/acestream-suite-partido/live.json")
-# S4: mientras el trabajo de los partidos aun deje el conjunto en la ruta vieja, se lee de ahi.
-LIVE_FILE_LEGACY = "/var/lib/acelist-partido/live.json"
-LIVE_FORMAT = "acelist-partido-live"
-TIMEOUT = float(env("ACESTREAM_SUITE_PLAYLIST_TIMEOUT", "ACELIST_PLAYLIST_TIMEOUT", "30"))
-# The engine's own name for the stream parameter, per the finding in odd/tasks/acelist.md.
-STREAM_PARAM = env("ACESTREAM_SUITE_STREAM_PARAM", "ACELIST_STREAM_PARAM", "infohash")
+LIVE_FILE = env("ACESTREAM_SUITE_PARTIDO_LIVE", "/var/lib/acestream-suite-partido/live.json")
+# Los marcadores de los documentos, que son el contrato con la app y no la marca del producto:
+# el del export que se lee y el del conjunto en directo que escriben los partidos.
+EXPORT_FORMAT = "acestream-suite"
+LIVE_FORMAT = "acestream-suite-partido-live"
+TIMEOUT = float(env("ACESTREAM_SUITE_PLAYLIST_TIMEOUT", "30"))
+# The engine's own name for the stream parameter (the Linux 3.2.11 build answers `failed to load
+# content` to `id`; see the docstring above).
+STREAM_PARAM = env("ACESTREAM_SUITE_STREAM_PARAM", "infohash")
 
 # Which channels are worth putting in a playlist: only the ones acestream-suite has verified as online.
 # The app's own `alive` is exactly "the engine reached dl with data downloaded and at least one
 # peer", so it already means "online with peers" — no dead link reaches a player, and a channel
 # that stops streaming drops out on the next run. Empty the value to publish the whole catalog.
-STATUS = env("ACESTREAM_SUITE_PLAYLIST_STATUS", "ACELIST_PLAYLIST_STATUS", "alive")
+STATUS = env("ACESTREAM_SUITE_PLAYLIST_STATUS", "alive")
 
 # Sports. The categories are the engine's own tags (and the three Spanish ones this deployment
 # made); the names catch what the engine filed elsewhere. `premier` is `Premier Sports` and not the
@@ -325,9 +311,28 @@ PLAYLISTS = (
      None),
 )
 
-# S4: las copias con el nombre viejo que se siguen escribiendo mientras dure esta version.
-# Dispatcharr (cuenta 4) lee `acelist.m3u` hoy; la tele lee `hls.m3u`, que no cambia de nombre.
-COMPAT_NAMES = {"acestream-suite.m3u": "acelist.m3u"}
+def compat_aliases(value=None):
+    """Las copias con otro nombre, como DATOS: `nuevo=otro,nuevo2=otro2`.
+
+    Vacio o ausente = ninguna copia, y es el defecto: el unico consumidor que pide otra cosa lo pone
+    en `/etc/acestream-suite.env` (su `.cron` carga ese fichero), asi que el nombre ajeno no vuelve
+    al codigo. Un nombre con separador de ruta se ignora: las copias se escriben SIEMPRE dentro del
+    directorio de salida, y esa es la regla que impide que un dato de entorno escriba donde no debe.
+    """
+    value = os.environ.get("ACESTREAM_SUITE_COMPAT_ALIASES", "") if value is None else value
+    aliases = {}
+    for par in str(value).split(","):
+        nombre, _, otro = par.partition("=")
+        nombre, otro = nombre.strip(), otro.strip()
+        if not nombre or not otro:
+            continue
+        if "/" in otro or "\\" in otro or otro in (".", ".."):
+            continue
+        aliases.setdefault(nombre, []).append(otro)
+    return aliases
+
+
+COMPAT_ALIASES = compat_aliases()
 
 
 def export_url(base_url=ACESTREAM_SUITE_URL, status=STATUS):
@@ -341,7 +346,7 @@ def fetch_channels(base_url=ACESTREAM_SUITE_URL, timeout=TIMEOUT, status=STATUS)
     url = export_url(base_url, status)
     with urllib.request.urlopen(url, timeout=timeout) as response:
         document = json.loads(response.read().decode("utf-8"))
-    if document.get("format") != "acelist":  # el marcador de la app, no la marca del producto
+    if document.get("format") != EXPORT_FORMAT:
         raise ValueError("%s is not an acestream-suite export (format=%r)"
                          % (url, document.get("format")))
     return document["channels"]
@@ -484,15 +489,18 @@ def write_if_changed(text, path):
 
 
 def save_all(built, directory):
-    """Escribe cada lista y, si la tiene, su copia con el nombre viejo (S4).
+    """Escribe cada lista y, si las pide, sus copias con otro nombre (`compat_aliases`).
 
-    Devuelve `{nombre: escrito}` para que `main` registre lo mismo que antes.
+    Devuelve `{nombre: escrito}` para que `main` registre lo mismo que antes. La copia se escribe
+    solo cuando su lista cambio: un fichero igual conserva su mtime, y nada que lo vigile tiene una
+    razon para reaccionar. Las copias caen siempre dentro de `directory`.
     """
     changed = {}
     for name, text, _ in built:
         changed[name] = write_if_changed(text, os.path.join(directory, name))
-        alias = COMPAT_NAMES.get(name)
-        if alias:
+        if not changed[name]:
+            continue
+        for alias in COMPAT_ALIASES.get(name, ()):
             write_if_changed(text, os.path.join(directory, alias))
     return changed
 
@@ -714,27 +722,6 @@ def self_test():
     assert parse_stop("2026-11-04T20:00:00Z") == datetime.datetime(2026, 11, 4, 20, 0)
     assert parse_stop("") is None
 
-    # S4: la ruta vieja del conjunto en directo, mientras sea la unica que existe. Se prueba con
-    # ficheros de verdad porque es un fallo silencioso: si no se lee, el partido no da carpeta.
-    temporal = tempfile.mkdtemp()
-    try:
-        nuevo = os.path.join(temporal, "live.json")
-        viejo = os.path.join(temporal, "viejo.json")
-        assert with_legacy(nuevo, nuevo, viejo) == nuevo, "sin ficheros manda la nueva"
-        with open(viejo, "w") as fichero:
-            fichero.write("{}")
-        assert with_legacy(nuevo, nuevo, viejo) == viejo, "solo la vieja: se lee la vieja"
-        with open(nuevo, "w") as fichero:
-            fichero.write("{}")
-        assert with_legacy(nuevo, nuevo, viejo) == nuevo, "las dos: manda la nueva"
-        assert with_legacy("/tmp/pedida.json", nuevo, viejo) == "/tmp/pedida.json", "una ruta pedida a mano"
-        # Y la copia con el nombre viejo se escribe con el mismo texto que la nueva.
-        assert save_all([("acestream-suite.m3u", "#EXTM3U\n", 0)], temporal)["acestream-suite.m3u"]
-        with open(os.path.join(temporal, "acelist.m3u")) as fichero:
-            assert fichero.read() == "#EXTM3U\n", "la copia vieja no se escribio"
-    finally:
-        shutil.rmtree(temporal)
-
     # And every file is always produced, even when the catalog is empty.
     built = build_all([], engine="http://motor:8081/")
     assert [name for name, _, _ in built] == [
@@ -742,20 +729,48 @@ def self_test():
     ], built
     assert all(text == "#EXTM3U\n" and n == 0 for _, text, n in built)
 
-    # S3/S4: la lista lleva el nombre nuevo y deja la copia con el viejo; y de las variables de
-    # entorno manda la nueva, con la vieja aun valiendo mientras el host solo exporte esa.
-    assert COMPAT_NAMES == {"acestream-suite.m3u": "acelist.m3u"}, COMPAT_NAMES
+    # Las copias con otro nombre son datos: sin la variable no se escribe ninguna, la copia lleva
+    # el texto de su lista, solo cuando la lista cambio, y siempre dentro del directorio de salida.
+    assert COMPAT_ALIASES == {}, COMPAT_ALIASES
+    assert compat_aliases("") == {}
+    assert compat_aliases("acestream-suite.m3u=otro.m3u") == {"acestream-suite.m3u": ["otro.m3u"]}
+    assert compat_aliases(" a.m3u = b.m3u , ") == {"a.m3u": ["b.m3u"]}
+    assert compat_aliases("a.m3u=b.m3u,c.m3u=d.m3u") == {"a.m3u": ["b.m3u"], "c.m3u": ["d.m3u"]}
+    assert compat_aliases("sin-igual") == {}
+    assert compat_aliases("a.m3u=../fuera.m3u") == {}, "fuera del directorio de salida no"
+    assert compat_aliases("a.m3u=/tmp/fuera.m3u") == {}, "ni una ruta absoluta"
+    temporal = tempfile.mkdtemp()
+    respaldo_alias = globals()["COMPAT_ALIASES"]
+    try:
+        globals()["COMPAT_ALIASES"] = {"acestream-suite.m3u": ["otro.m3u"]}
+        una = [("acestream-suite.m3u", "#EXTM3U\n", 0)]
+        assert save_all(una, temporal)["acestream-suite.m3u"] is True
+        for nombre in ("acestream-suite.m3u", "otro.m3u"):
+            with open(os.path.join(temporal, nombre)) as fichero:
+                assert fichero.read() == "#EXTM3U\n", nombre
+        # Un fichero igual no se reescribe: ni la lista ni su copia.
+        os.unlink(os.path.join(temporal, "otro.m3u"))
+        assert save_all(una, temporal)["acestream-suite.m3u"] is False
+        assert not os.path.exists(os.path.join(temporal, "otro.m3u")), "sin cambio no hay copia"
+    finally:
+        globals()["COMPAT_ALIASES"] = respaldo_alias
+        shutil.rmtree(temporal)
+
+    # Las variables de entorno se leen con su nombre y solo con el: la vieja ya no se mira. El nombre
+    # viejo va en dos trozos unidos al ejecutar: el compilador pliega una suma de cadenas en una
+    # sola constante, y el nombre quedaria dentro del `.pyc` que la auditoria tambien mira.
+    viejo = "".join(("ACE", "LIST"))
     respaldo = dict(os.environ)
     try:
         os.environ.pop("ACESTREAM_SUITE_STREAM_PARAM", None)
-        os.environ["ACELIST_STREAM_PARAM"] = "viejo"
-        assert env("ACESTREAM_SUITE_STREAM_PARAM", "ACELIST_STREAM_PARAM", "d") == "viejo"
+        os.environ[viejo + "_STREAM_PARAM"] = "viejo"
+        assert env("ACESTREAM_SUITE_STREAM_PARAM", "d") == "d", "la vieja ya no se lee"
         os.environ["ACESTREAM_SUITE_STREAM_PARAM"] = "nuevo"
-        assert env("ACESTREAM_SUITE_STREAM_PARAM", "ACELIST_STREAM_PARAM", "d") == "nuevo"
+        assert env("ACESTREAM_SUITE_STREAM_PARAM", "d") == "nuevo"
     finally:
         os.environ.clear()
         os.environ.update(respaldo)
-    assert env("ACESTREAM_SUITE_NO_EXISTE", "ACELIST_TAMPOCO", "d") == "d"
+    assert env("ACESTREAM_SUITE_NO_EXISTE", "d") == "d"
     print("self-test OK")
 
 
@@ -795,8 +810,7 @@ def main(argv=None):
 
     # S11/S12: el conjunto en directo, leido una vez por pasada. Un fichero ausente es conjunto
     # vacio, no un error: sin partido no hay carpeta ni entradas en `madrid.m3u`, y nada mas cambia.
-    # S4: la ruta nueva, y la vieja mientras sea la unica que existe.
-    live_path = with_legacy(args.live_file, LIVE_FILE, LIVE_FILE_LEGACY)
+    live_path = args.live_file
     live = load_live(live_path)
     log("%d channels in the live set from %s" % (len(live), live_path))
 

@@ -6,48 +6,47 @@ programación guardada, una celda de ahora/después y una parrilla en la propia 
 aplicación, más un documento XMLTV y una lista M3U con `tvg-id`/`url-tvg` para que Dispatcharr y
 Jellyfin muestren qué hay en cada momento.
 
-> **El producto se llamaba AceList**: la guía vive ahora en `acestream-suite`, y el renombrado está
-> registrado en `odd/tasks/acestream-suite-rename.md`. Rige la compatibilidad de una versión — la vieja
-> `/varios/acelist-epg.m3u` se mantiene como copia de `acestream-suite-guide.m3u`, las variables
-> `ACELIST_*` se siguen leyendo cuando falta la nueva, y `/usr/local/bin/acelist-epg-playlist` es un
-> envoltorio del binario nuevo. El motor AceStream conserva su nombre.
+> **El producto es `acestream-suite`**, y la guía es una de sus funciones. El código de la aplicación
+> vive en este repositorio (`acestream-suite/`), así que no se descarga ninguna release ni se aplica
+> ningún parche; los nombres de las listas, las variables `ACESTREAM_SUITE_*` y los binarios
+> `/usr/local/bin/acestream-suite-*` llevan ese nombre, y los nombres que el producto tenía antes del
+> renombrado ya no existen. El motor AceStream conserva su nombre.
 
 | | |
 |---|---|
 | URL | `http://192.168.1.245:8083` (solo LAN, sin autenticación) |
 | Host | `dev.albertucho.home` — 192.168.1.245, RHEL 8.7 |
 | Contenedor | `acestream-suite`, proyecto de compose `acestream-suite`, imagen `acestream-suite:1.3.0` |
-| Construida desde | el tarball fijado del proyecto, etiqueta `v1.3.0`, más **dos** parches locales: `acestream-suite/Dockerfile` aplica `acestream-suite-lan.patch` y después `acestream-suite-guide.patch` |
+| Construida desde | este repositorio: `acestream-suite/Dockerfile` copia `app/`, `migrations/`, `pyproject.toml` y `alembic.ini` del árbol, instala ese árbol y añade `ffmpeg` |
 | Motor | el motor AceStream de **192.168.1.28**, dentro de su túnel WireGuard |
-| Plan y evidencias | `odd/tasks/acelist-epg.md` |
-| Ficheros en el host | `/opt/acestream-suite/` (compose, Dockerfile, entrypoint, los dos parches, `data/`) |
+| Plan y evidencias | `odd/tasks/acestream-suite-rename.md`; los planes anteriores de `odd/tasks/` conservan el nombre con el que se crearon |
+| Ficheros en el host | `/opt/acestream-suite/` (compose, Dockerfile, entrypoint, el puente HLS, el árbol de la aplicación, `data/`) |
 
 ## Historia: la guía se probó en un duplicado y después se fusionó
 
-El dueño pidió el 2026-10-13 que el trabajo de la EPG se hiciera sobre una **copia** (entonces
-llamada `AceListEPG`, en el puerto 8087) precisamente para que el servicio que la casa mira no fuera
-el banco de pruebas: la guía necesita tablas nuevas, un refresco, pantallas propias y una salida
-XMLTV, y desarrollar eso dentro del despliegue que ya atendía a la tele habría puesto en riesgo su
-catálogo, sus capturas y su cola de comprobaciones. El duplicado se sembró desde el servicio vivo
+El dueño pidió el 2026-10-13 que el trabajo de la EPG se hiciera sobre una **copia** (un segundo
+despliegue del producto con el nombre que tenía entonces, en el puerto 8087) precisamente para que el
+servicio que la casa mira no fuera el banco de pruebas: la guía necesita tablas nuevas, un refresco,
+pantallas propias y una salida XMLTV, y desarrollar eso dentro del despliegue que ya atendía a la
+tele habría puesto en riesgo su catálogo, sus capturas y su cola de comprobaciones. El duplicado se
+sembró desde el servicio vivo
 (`GET /export`), la guía se construyó y se probó en él durante el 2026-10-13/14, y cuando el dueño
 aceptó la interfaz el trabajo se fusionó en `acestream-suite` y el duplicado se retiró: contenedor
-parado, su red eliminada, su imagen eliminada, su directorio (`/opt/acelist-epg`) borrado y el
+parado, su red eliminada, su imagen eliminada, su directorio en el host borrado y el
 puerto 8087 libre. El script de sembrado se fue con él: este servicio ya tenía el catálogo.
 
 ## Cómo se construye
 
-Una imagen, un Dockerfile y un único pin del proyecto:
+Una imagen, un Dockerfile y un único árbol de código:
 
-- `acestream-suite/Dockerfile` descarga el tarball de la etiqueta fijada, lo verifica por sha256 y
-  aplica **dos** parches en orden: `acestream-suite-lan.patch` (alcance en la LAN y reproducción) y
-  `acestream-suite-guide.patch` (la guía). Los dos se leen contra el mismo
-  `ACESTREAM_SUITE_VERSION`/`ACESTREAM_SUITE_SHA256`, así que no hay un segundo `FROM` que pueda
-  desviarse: subir de versión obliga a releer **los dos** parches contra el código nuevo.
+- `acestream-suite/Dockerfile` copia `pyproject.toml`, `alembic.ini`, `app/` y `migrations/` del árbol,
+  instala ese árbol en modo editable y copia los dos binarios a `app/web/static/`. No hay tarball de
+  release ni fichero de parche, así que un cambio en la aplicación es un cambio en este repositorio.
 - **Sin entrypoint propio.** El `entrypoint.sh` de la imagen migra la base de datos con el
   `app.launcher.upgrade_database()` de la propia aplicación y luego sirve con uvicorn; las tablas de
   la guía llegan como migraciones de Alembic, que es justo lo que ese entrypoint ejecuta.
-- Todo lo demás es la imagen de acestream-suite ya desplegada: ffmpeg, la instalación editable del
-  árbol parcheado, `ACESTREAM_SUITE_DATA_DIR=/data`, el volumen `/data` y `EXPOSE 8000`.
+- Todo lo demás que lleva la imagen: ffmpeg, `ACESTREAM_SUITE_DATA_DIR=/data`, el volumen `/data` y
+  `EXPOSE 8000`.
 
 ## Qué corre y dónde
 
@@ -55,7 +54,7 @@ Una imagen, un Dockerfile y un único pin del proyecto:
 |---|---|
 | Contenedor / proyecto | `acestream-suite`, proyecto de compose `acestream-suite` — un solo servicio, no dos |
 | Puerto | **8083** en el host, 8000 dentro |
-| Estado | **`/opt/acelist/data`** en .245 (`acelist.db` + `screenshots/`) |
+| Estado | **`/opt/acestream-suite/data`** en .245 (`acestream-suite.db` + `screenshots/`) |
 | Motor | **`http://192.168.1.28:8081`**, el motor tunelado — para los enlaces de reproducción, y **no** como fuente de trabajo |
 | Cola de comprobaciones | una, y es la de este servicio: 581 canales y **1187 comprobaciones** en el momento de medir |
 
@@ -70,8 +69,10 @@ Acción, desde el portátil:
 
 ```bash
 cd ~/webserver
-scp acestream-suite/Dockerfile acestream-suite/docker-compose.yml acestream-suite/entrypoint.sh \
-    acestream-suite/acestream-suite-lan.patch acestream-suite/acestream-suite-guide.patch root@192.168.1.245:/opt/acestream-suite/
+scp -r acestream-suite/Dockerfile acestream-suite/docker-compose.yml acestream-suite/entrypoint.sh \
+    acestream-suite/hls-bridge.py acestream-suite/pyproject.toml acestream-suite/alembic.ini \
+    acestream-suite/app acestream-suite/migrations acestream-suite/assets \
+    root@192.168.1.245:/opt/acestream-suite/
 ```
 
 Acción, en el host:
@@ -270,11 +271,11 @@ en línea con las otras cuatro y con sus reglas compartidas:
   manifiestos y 23 fallos en un minuto). `direct.m3u` sigue siendo la lista del propio motor, para
   Dispatcharr y para diagnosticar.
 
-**La lista que lee Dispatcharr es `acelist.m3u` —copia de `acestream-suite.m3u` mientras dure esta
-versión— y no se tocó a propósito.** `http://192.168.1.245/varios/acelist.m3u` es la que consume hoy
-la cuenta 4, con `tvg-id` = el content id AceStream de 40 hex de cada stream; reescribirla en su
-sitio volvería a mapear la parrilla viva (la cuenta tiene ~1.072 streams marcados como obsoletos y
-el dueño aplazó esa decisión). La nueva lista es un **segundo** artefacto, escrito por
+**La lista que lee Dispatcharr es la copia de `acestream-suite.m3u` con el nombre anterior, y no se
+tocó a propósito.** Esa copia es la que consume hoy la cuenta 4, con `tvg-id` = el content id
+AceStream de 40 hex de cada stream; reescribirla en su sitio volvería a mapear la parrilla viva (la
+cuenta tiene ~1.072 streams marcados como obsoletos y el dueño aplazó esa decisión). La nueva lista
+es un **segundo** artefacto, escrito por
 `/usr/local/bin/acestream-suite-guide-playlist` (a partir de
 `scripts/acestream-suite-guide-playlist.py`), y solo escribe cuando su contenido cambia. El dueño
 decidirá si la cuenta 4 se pasa alguna vez a ella; lo que se mantiene es la decisión de no meter la
@@ -286,9 +287,11 @@ HLS el 2026-10-18 y la regla de una entrada por nombre el 2026-10-25, ver
 
 ## Copias de seguridad tomadas antes de la fusión
 
-- `/backup/acelist/merge-20261014-083751` — el servicio tal como estaba: `acelist.db` con
+Dos directorios bajo la raíz de copias, con los nombres del 2026-10-14:
+
+- `/backup/acestream-suite/merge-20261014-083751` — el servicio tal como estaba: `acestream-suite.db` con
   `integrity_check ok`, 581 canales, 1187 comprobaciones, 587 capturas y los ficheros del despliegue.
-- `/backup/acelist/epg-duplicado-20261014-085035` — la base de datos del duplicado (12 MB), conservada
+- `/backup/acestream-suite/epg-duplicado-20261014-085035` — la base de datos del duplicado (12 MB), conservada
   como seguro aunque el duplicado ya no exista.
 
 ## Comprobaciones que merecen la pena
@@ -305,13 +308,14 @@ head -1 /srv/www/varios/acestream-suite-guide.m3u
 md5sum /srv/www/varios/acestream-suite.m3u
 docker exec acestream-suite python3 -c '
 import sqlite3, os
-c = sqlite3.connect("file:%s/acelist.db?mode=ro" % os.environ["ACESTREAM_SUITE_DATA_DIR"], uri=True)
+c = sqlite3.connect("file:%s/acestream-suite.db?mode=ro" % os.environ["ACESTREAM_SUITE_DATA_DIR"], uri=True)
 for t in ("channel", "check_result", "epg_channel", "programme", "epg_alias"):
     print(t, c.execute("select count(*) from " + t).fetchone()[0])
 print("mapped", c.execute("select count(*) from channel where guide_channel_id is not null").fetchone()[0])'
 ```
 
-Registro (el despliegue fusionado, medido en el host el 2026-10-14):
+Registro — salida literal de esa fecha (2026-10-14, el despliegue fusionado en el host), con los
+nombres de ese día:
 
 ```
 {"status":"ok","app":"AceList","version":"1.3.0"}
@@ -331,8 +335,8 @@ mapped 103
 
 Dos cosas de ese registro son el sentido de la fusión: `check_result` es **1187**, no **0** — la
 guía vive ahora junto a las comprobaciones reales de este servicio, en lugar de en un despliegue que
-no encolaba ninguna; y que la lista conserve su md5 —aparece como `acelist.m3u`, el nombre de ese día,
-y también el campo `app` de la respuesta de salud— demuestra que la lista de la tele no se tocó.
+no encolaba ninguna; y que la lista conserve su md5 —aparece con el nombre que ese fichero tenía ese
+día, y también el campo `app` de la respuesta de salud— demuestra que la lista de la tele no se tocó.
 
 ## Límites y peajes conocidos
 
@@ -352,7 +356,7 @@ y también el campo `app` de la respuesta de salud— demuestra que la lista de 
 - **La frescura de la guía depende de los dos trabajos de arriba.** Si el refresco deja de correr, la
   ventana de 72 h se vacía y la guía se calla — ese es el modo de fallo que hay que vigilar.
 - **Las copias de seguridad son manuales.** Los dos directorios de arriba son las únicas copias previas
-  a la fusión; nada programa `/backup/acelist`.
+  a la fusión; nada programa la raíz de copias.
 
 ## Diagnóstico
 

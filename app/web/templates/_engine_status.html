@@ -1,0 +1,23 @@
+{# Ace Stream indicator in the top bar. Loaded and refreshed by htmx, so a slow or absent
+   engine never delays a page. Before the first poll nothing is known; after it,
+   `engine_version` is None when the engine is off. #}
+{% set checked = engine_checked is defined %}
+<div id="engine-status" class="engine-status{% if checked %}{{ ' up' if engine_version else ' down' }}{% endif %}"
+     hx-get="{{ url_for('engine_status') }}" hx-trigger="{{ 'every 30s' if checked else 'load, every 30s' }}" hx-swap="outerHTML"
+     role="status"{% if checked %} title="Engine en {{ engine_url }}"{% endif %}>
+  <span class="engine-dot" aria-hidden="true"></span>
+  {% if not checked %}
+  <span>Ace Stream…</span>
+  {% elif engine_version %}
+  <span>Ace Stream {{ engine_version.version }}</span>
+  {% else %}
+  <span>Ace Stream apagado</span>
+  {% if engine_error %}<span class="engine-error">{{ engine_error }}</span>{% endif %}
+  {% if engine_can_start %}
+  <button type="button" class="engine-start" hx-post="{{ url_for('engine_start') }}"
+          hx-target="#engine-status" hx-swap="outerHTML" hx-disabled-elt="this">
+    <span class="when-idle">Iniciar</span><span class="when-busy">Iniciando…</span>
+  </button>
+  {% endif %}
+  {% endif %}
+</div>

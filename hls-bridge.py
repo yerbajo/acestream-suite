@@ -14,7 +14,7 @@ POR QUÉ EXISTE
 CÓMO SE USA
     http://<host>:8084/<infohash>/index.m3u8     el manifiesto; el reproductor hace el resto
     http://<host>:8084/healthz                   qué sesiones hay vivas
-    El fichero `hls.m3u` que genera acelist-playlist.py apunta aquí, así que en la tele basta con
+    El fichero `hls.m3u` que genera acestream-suite-playlist.py apunta aquí, así que en la tele basta con
     cargar esa lista.
 
 DECISIONES
@@ -986,7 +986,7 @@ def self_test():
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="El puente HLS de AceList (ver el docstring).")
+    parser = argparse.ArgumentParser(description="El puente HLS de acestream-suite (ver el docstring).")
     parser.add_argument("--self-test", action="store_true",
                         help="comprueba las decisiones sin motor ni red, y sale")
     args = parser.parse_args(argv)

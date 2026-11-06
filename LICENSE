@@ -23,9 +23,10 @@ SOFTWARE.
 ---
 
 This license covers the work authored in this repository: the deployment files,
-the diffs under `app-patches/` (or `*.patch` at the root), the scripts under
-`scripts/`, the documentation and the logo.
+the changes made to the application, the scripts under `scripts/`, the
+documentation and the logo.
 
-It does not cover the upstream base the image is built from, which is the
-AceList project and is not redistributed here; see `NOTICE.md`. It also does not
-cover the AceStream name or mark, which belong to their owner.
+The application code is derived from the **AceList** project, which publishes no
+license of its own; that provenance, and what it means if you redistribute this
+repository or an image built from it, is in `NOTICE.md`. The AceStream name and
+mark belong to their owner.

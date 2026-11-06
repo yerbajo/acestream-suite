@@ -1,0 +1,110 @@
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+from urllib.parse import urlsplit
+
+import uvicorn
+from fastapi import FastAPI, Request
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import PlainTextResponse
+from fastapi.staticfiles import StaticFiles
+
+from app import __version__
+from app.config import ALLOWED_HOSTS as EXTRA_ALLOWED_HOSTS
+from app.config import DATA_DIR, env
+from app.db.session import make_engine, make_session_factory
+from app.services.batch import CheckRunner
+from app.services.screenshots import SCREENSHOTS_SUBDIR
+from app.web import (
+    check_routes,
+    engine_routes,
+    epg_routes,
+    import_routes,
+    search_routes,
+    settings_routes,
+)
+from app.web.flash import clear_shown_flash
+from app.web.routes import router
+from app.web.templating import STATIC_DIR
+
+HOST = "127.0.0.1"
+PORT = int(env("PORT", "8000"))
+# Requests naming any other host are refused, so a web page cannot reach the app
+# through DNS rebinding even though it listens on loopback. `ACESTREAM_SUITE_ALLOWED_HOSTS`
+# adds the address a LAN deployment is reached by; the origin check below reuses
+# this same list, so the CSRF defence keeps working with a real allow-list.
+ALLOWED_HOSTS = [HOST, "localhost", *EXTRA_ALLOWED_HOSTS]
+_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+class OptionalStaticFiles(StaticFiles):
+    """Static files from a folder that may not exist yet: missing files are a 404."""
+
+    async def check_config(self) -> None:
+        if Path(self.directory).is_dir():
+            await super().check_config()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    # Queued background checks are dropped; running ones finish on their own.
+    app.state.check_runner.shutdown()
+
+
+app = FastAPI(title="acestream-suite", lifespan=lifespan)
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+
+
+@app.middleware("http")
+async def consume_flash(request: Request, call_next):
+    response = await call_next(request)
+    clear_shown_flash(request, response)
+    return response
+
+
+@app.middleware("http")
+async def reject_cross_site_writes(request: Request, call_next):
+    # The Host check does not stop another site from posting a form to the app (CSRF),
+    # so writes must come from the app's own pages.
+    if request.method not in _SAFE_METHODS:
+        origin = request.headers.get("origin")
+        cross_site = request.headers.get("sec-fetch-site") == "cross-site"
+        if cross_site or (origin and urlsplit(origin).hostname not in ALLOWED_HOSTS):
+            return PlainTextResponse("cross-site request rejected", status_code=403)
+    return await call_next(request)
+
+
+app.state.session_factory = make_session_factory(make_engine())
+app.state.check_runner = CheckRunner()
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+# Only the screenshots folder is served, never the rest of the data directory.
+# It does not exist until the first capture.
+app.mount(
+    "/screenshots",
+    OptionalStaticFiles(directory=DATA_DIR / SCREENSHOTS_SUBDIR, check_dir=False),
+    name="screenshots",
+)
+app.include_router(router)
+app.include_router(settings_routes.router)
+app.include_router(check_routes.router)
+app.include_router(import_routes.router)
+app.include_router(search_routes.router)
+app.include_router(engine_routes.router)
+app.include_router(epg_routes.router)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    # "app" lets the launcher tell acestream-suite from another program on the same port.
+    return {"status": "ok", "app": "acestream-suite", "version": __version__}
+
+
+def run() -> None:
+    # Bound to loopback only: the app is for local use.
+    uvicorn.run(app, host=HOST, port=PORT)
+
+
+if __name__ == "__main__":
+    run()

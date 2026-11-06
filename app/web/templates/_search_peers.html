@@ -1,0 +1,6 @@
+{% if error %}
+<span class="hint">{{ error }}</span>
+{% else %}
+<strong>{{ result.peers if result.peers is not none else "—" }}</strong> pares
+<span class="hint">{{ status_labels[result.status] }} ahora</span>
+{% endif %}

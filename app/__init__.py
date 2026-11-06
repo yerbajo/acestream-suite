@@ -1,0 +1,3 @@
+"""acestream-suite: a local catalog of Ace Stream links."""
+
+__version__ = "1.3.0"

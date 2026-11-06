@@ -1,0 +1,13 @@
+# El contexto de construcción es el árbol de la app; lo que no hace falta en la imagen no viaja.
+.git/
+.gitignore
+tests/
+assets/*
+!assets/favicon.ico
+!assets/logo-wordmark.png
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.env

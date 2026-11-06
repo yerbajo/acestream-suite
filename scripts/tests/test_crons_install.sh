@@ -323,21 +323,40 @@ for j in "${nuevos[@]}"; do
   check "JOBS carries $j" "$(printf '%s\n' "${JOBS_ARR[@]}" | grep -qx "$j"; echo $?)"
   check "the repository has $j.cron" "$([ -f "$REPO_SCRIPTS/$j.cron" ]; echo $?)"
 done
-check "no job in JOBS keeps the old name" \
-  "$(! printf '%s\n' "${JOBS_ARR[@]}" | grep -q acelist; echo $?)"
-check "the old .cron files are gone" \
-  "$([ -z "$(find "$REPO_SCRIPTS" -maxdepth 1 -name 'acelist-*.cron' -print -quit)" ]; echo $?)"
+# No .cron file in the repository belongs to a job that is not in JOBS: a renamed job whose old
+# file stayed behind would still be migrated (and run) on the host.
+for f in "$REPO_SCRIPTS"/*.cron; do
+  job="$(basename "$f" .cron)"
+  check "every .cron in scripts/ is a job in JOBS ($job)" \
+    "$(printf '%s\n' "${JOBS_ARR[@]}" | grep -qx "$job"; echo $?)"
+done
 
 # The repository's own .cron files: every job in JOBS resolves (a missing file aborts) and the
-# crontab it builds runs the new binaries and names no old job. `CRONS_EXTRA_SOURCE_DIR` keeps its
-# default, which is where finanzas-backup.cron lives.
+# crontab it builds runs the new binaries. `CRONS_EXTRA_SOURCE_DIR` keeps its default, which is
+# where finanzas-backup.cron lives.
 export CRONS_SOURCE_DIR="$REPO_SCRIPTS"
 run
 check "the repository's own .cron files generate (exit 0)" "$RC"
-check "the generated crontab names no old job" \
-  "$(! grep -qE '(# --- |/usr/local/bin/|/etc/cron.d/)acelist-' "$TMP/out"; echo $?)"
-check "the generated crontab runs the new binaries" \
-  "$(grep -q '/usr/local/bin/acestream-suite-playlist' "$TMP/out"; echo $?)"
+for j in acestream-suite-playlist acestream-suite-partido acestream-suite-prune \
+         acestream-suite-guide-playlist; do
+  check "the generated crontab runs /usr/local/bin/$j" \
+    "$(grep -qF "/usr/local/bin/$j " "$TMP/out"; echo $?)"
+done
+check "the generated crontab has the guide-refresh block" \
+  "$(grep -qF '# --- acestream-suite-guide-refresh ' "$TMP/out"; echo $?)"
+
+# The list aliases (S4, as data): the two playlist jobs load the host's own env file, so an alias
+# for another consumer lives outside the repository. Only those two, and the line is harmless when
+# the file is absent (POSIX sh; the crontab runs /bin/sh).
+ENV_LINE='[ -r /etc/acestream-suite.env ] && . /etc/acestream-suite.env;'
+for j in acestream-suite-playlist acestream-suite-guide-playlist; do
+  check "$j loads /etc/acestream-suite.env" \
+    "$(grep -qF "$ENV_LINE /usr/local/bin/$j " "$TMP/out"; echo $?)"
+done
+check "only the two playlist jobs load /etc/acestream-suite.env" \
+  "$([ "$(grep -cF "$ENV_LINE" "$TMP/out")" = 2 ]; echo $?)"
+check "the env-file load does not break when the file is absent" \
+  "$(sh -c '[ -r "$1" ] && . "$1"; exit 0' sh "$TMP/no-existe.env"; echo $?)"
 export CRONS_SOURCE_DIR="$TMP/src"
 
 # ---------------------------------------------------------------------------

@@ -53,21 +53,15 @@ Two details that will bite if skipped:
   in the app's **Ajustes** page, and a saved value wins over the environment — so a wrong `.env` is
   fixable from the UI without a rebuild.
 
-## The image is built locally, on purpose
+## The image is built locally, from this repository
 
-`docker compose up -d --build` **builds** the image; nothing is pulled. The upstream base — the
-**AceList** project — publishes no image at all (its only supported way to run is the Windows
-executable), so there is nothing to pull.
+`docker compose up -d --build` **builds** the image; nothing is pulled but the base `python:3.12-slim`
+and the distro packages. The application source is here: `app/` (the FastAPI app), `migrations/`
+(Alembic) and `pyproject.toml`, copied into the image and installed in editable mode, because the app
+reads its templates, its static files and its migrations relative to the source tree.
 
-The build takes the upstream release **tarball**, not a git clone and not a moving tag: the
-`Dockerfile` pins the release by version **and** by sha256 (`ACELIST_VERSION=1.3.0`,
-`ACELIST_SHA256=487bee2f…72d879`), verifies the download against it and only then applies this
-project's three patches. `ffmpeg` is installed in the image because the screenshots and the
-availability check read the live stream through it.
-
-Those two `ACELIST_*` build arguments are the *upstream base's* name, not this product's, and they
-stay in step with upstream's release tags on purpose: a version bump means bumping them and
-re-reading all three patches against the new source.
+`ffmpeg` is installed in the image because the screenshots and the availability check read the live
+stream through it.
 
 Updating:
 
@@ -97,7 +91,7 @@ been renamed yet keeps working (the new name wins when both are set).
 | `ACESTREAM_SUITE_SCREENSHOT_TIMEOUT` | `30` | Seconds allowed for the ffmpeg frame capture. |
 | `ACESTREAM_SUITE_FFMPEG_PATH` | empty = `ffmpeg` on `PATH` | The binary used for screenshots. |
 | `ACESTREAM_SUITE_VLC_PATH` | empty = usual folders, then `PATH` | Only read in `vlc` playback mode. |
-| `ACESTREAM_SUITE_DATA_DIR` | `/data` in the image, the OS app-data directory elsewhere | Where `acelist.db` and `screenshots/` live. |
+| `ACESTREAM_SUITE_DATA_DIR` | `/data` in the image, the OS app-data directory elsewhere | Where `acestream-suite.db` and `screenshots/` live. |
 | `ACESTREAM_SUITE_PORT` | `8080` | Port published on the host. The app always listens on `8000` inside the container. |
 | `ACESTREAM_SUITE_EPG_SOURCES` | `[]` | XMLTV sources, as a JSON list of URLs. Empty is a supported state: the catalogue works without a guide. |
 | `ACESTREAM_SUITE_EPG_WINDOW_HOURS` | `72` | How far ahead of *now* the guide is kept; older programmes are pruned as each refresh runs. |
@@ -119,8 +113,7 @@ Two notes:
 - One thing the compose file declares and **no code reads** is `ACESTREAM_SUITE_EPG_REFRESH_HOURS`.
   It is there so the refresh interval is decided in the deployment; the schedule itself lives in
   `scripts/acestream-suite-guide-refresh.cron`, which has to be kept in step with it by hand.
-- The database file keeps the name `acelist.db`. It is inside the data directory the app is pointed
-  at; the name is not configuration and does not follow the product rename.
+- The database file is `acestream-suite.db`, inside the data directory the app is pointed at.
 
 ## Data and backups
 
@@ -129,7 +122,7 @@ compose file:
 
 ```
 data/
-  acelist.db      SQLite: catalogue, check history, guide tables, settings
+  acestream-suite.db   SQLite: catalogue, check history, guide tables, settings
   screenshots/    one captured frame per channel
 ```
 
@@ -148,31 +141,18 @@ together with a re-importable export of the whole catalogue.
 To restore: stop the app, replace `data/`, start it. The entrypoint applies the database migrations
 on the way up, so a backup from an older version is upgraded rather than rejected.
 
-## The three patches
+## How the source is organised
 
-The app is not forked: upstream stays upstream. Everything this project changes is a diff applied at
-build time, in this order, each read against the same pinned tarball.
-
-| Patch | What it adds |
+| Path | What it is |
 |---|---|
-| `acestream-suite-lan.patch` | LAN reachability and playback: the host allow-list used by both the `Host` and the CSRF-origin check, the `url` playback mode that works on a host with no player, and the engine's `infohash` dialect. |
-| `acestream-suite-guide.patch` | The guide: XMLTV tables and migrations, the refresh command, `/epg.xml` and `/epg.json`, the now/next cell and the grid, and the channel↔guide mapping screens. |
-| `acestream-suite-search.patch` | The search page over `acesearch` and its setting — plus the `ACESTREAM_SUITE_*` names with the `ACELIST_*` fallback. |
+| `app/` | The web application: FastAPI routes, templates, static files, the engine client, the guide and the search. |
+| `migrations/` + `alembic.ini` | The database schema, applied on container start by `entrypoint.sh`. |
+| `tests/` | The application's test suite (pytest, ~640 tests, no network): `pytest -q` from the repository root. |
+| `scripts/` | The optional host jobs: the playlist builders, the match-day importer, the prune, their `.cron` files and `crons-install.sh`. |
+| `assets/` | The logo and the favicon the image copies into the app's static directory. |
+| `docs/` | The operator guides, English canonical with a Spanish mirror. |
 
-`build-patch.sh` regenerates them. It builds the trees the diffs are taken between — `$WORK/base`
-(the pinned tarball plus the LAN patch), `$WORK/epg` (you edit here), `$WORK/search` — reads the
-version and the sha256 from the `Dockerfile`, so the pin lives in one place, and refuses to overwrite
-a tree you are in the middle of editing:
-
-```bash
-./build-patch.sh --help                    # the options, and the reasoning, in full
-./build-patch.sh --prepare                 # build/refresh the trees (default)
-./build-patch.sh --generate                # rewrite the guide patch from base vs epg
-./build-patch.sh --generate-search         # rewrite the search patch from epg vs search
-```
-
-It needs `patch`, `curl` and `sha256sum`, and `--tarball FILE` reuses a tarball you already have
-(the checksum is still verified).
+Provenance, and what that means for you, is in `NOTICE.md`.
 
 ## The HLS bridge
 
@@ -227,11 +207,11 @@ checks with no network and no files. The playlist jobs need a web server serving
 
 ## License and third-party notices
 
-This repository's own work — the deployment files, the three patches, the scripts, the documentation
-and the logo — is MIT-licensed; see `LICENSE`. The upstream base the image is built from is **not**
-redistributed here: the `Dockerfile` downloads it at build time, and it carries no license of its
-own. Third-party notices, including the origin of the AceStream mark inside the logo and the
-licenses of the software the image installs, are in `NOTICE.md`.
+The work authored here — the deployment files, the scripts, the documentation, the logo and the
+application code — is MIT-licensed; see `LICENSE`. The application started life as the **AceList**
+project, which publishes no license, and `NOTICE.md` records that provenance, the AceStream mark
+inside the logo, and the licenses of the software the image installs. Read it before redistributing
+an image built from this repository.
 
 ## How this is deployed here
 

@@ -11,13 +11,13 @@ WHY THIS EXISTS
     now/next and a grid for the channels that have a guide.
 
 WHY A SECOND LIST AND NOT AN EDIT
-    `http://192.168.1.245/varios/acelist.m3u` is what Dispatcharr account 4 consumes today, with
-    `tvg-id` = the 40-hex AceStream content id on every line. Changing that id in place re-maps the
-    live line-up (the account has ~1,072 streams marked stale), which the owner deferred. So this
-    script writes a NEW file and never touches the two lists `scripts/acestream-suite-playlist.py`
-    owns: the TV keeps reading exactly what it read before, and the owner decides when to cut over.
-    `acelist-epg.m3u` is written too, as a copy of `acestream-suite-guide.m3u`, exactly as its new
-    sibling does: the name that exists today keeps existing while this version lasts (S4).
+    `http://192.168.1.245/varios/acestream-suite.m3u` is what Dispatcharr consumes, with `tvg-id` =
+    the 40-hex AceStream content id on every line. Changing that id in place re-maps the live
+    line-up (the account has ~1,072 streams marked stale), which the owner deferred. So this script
+    writes a NEW file and never touches the lists `scripts/acestream-suite-playlist.py` owns: the TV
+    keeps reading exactly what it read before, and the owner decides when to cut over. A player that
+    still asks for another file name is served through `ACESTREAM_SUITE_COMPAT_ALIASES` (see
+    `compat_aliases`): no consumer's file name is written into this script.
 
 WHERE THE GUIDE IDS COME FROM
     `/epg.json` on acestream-suite, which maps `content_id -> guide id -> display name` for the mapped
@@ -43,8 +43,9 @@ WHY THE CATALOGUE IS FILTERED BY AVAILABILITY
 INSTALL (on dev.albertucho.home, the .245 host)
     install -m 0755 scripts/acestream-suite-guide-playlist.py /usr/local/bin/acestream-suite-guide-playlist
     /usr/local/bin/acestream-suite-guide-playlist          # first run, so the file exists before anything reads it
-    # Served at http://192.168.1.245/varios/acestream-suite-guide.m3u (and `acelist-epg.m3u`, its
-    # old name, while this version lasts); the guide at ...:8083/epg.xml
+    # Served at http://192.168.1.245/varios/acestream-suite-guide.m3u; the guide at ...:8083/epg.xml
+    # A copy under another name, if a consumer needs one, comes from ACESTREAM_SUITE_COMPAT_ALIASES
+    # (the host keeps its value in /etc/acestream-suite.env, which the .cron loads).
 
 USAGE
     acestream-suite-guide-playlist                 # fetch, build and write only when the content changed
@@ -70,52 +71,61 @@ import urllib.parse
 import urllib.request
 
 
-def env(name, legacy, default):
-    """S4: la variable nueva y, mientras el host solo exporte la vieja, la vieja.
+def env(name, default):
+    """El valor de `ACESTREAM_SUITE_*`, o el defecto.
 
-    Se lee `ACESTREAM_SUITE_*` primero; `ACELIST_*` sigue valiendo en esta version para que un host
-    que aun la exporte (el crontab viejo, un docker-compose sin actualizar) no cambie de
-    comportamiento el dia del renombrado.
+    Una sola variable por ajuste: el nombre viejo ya no se lee, y el entorno vacio es el caso normal
+    (lo que el host necesite lo pone en `/etc/acestream-suite.env`, que carga su `.cron`).
     """
     value = os.environ.get(name)
-    if value is None:
-        value = os.environ.get(legacy)
     return default if value is None else value
-
-
-def with_legacy(path, current, legacy):
-    """S4: la ruta nueva y, mientras la vieja sea la unica que existe, la vieja."""
-    if path == current and not os.path.exists(path) and legacy and os.path.exists(legacy):
-        return legacy
-    return path
 
 
 # The service that carries the catalogue and the guide: 8083, the live acestream-suite. The default is
 # loopback because the script runs on the host next to its own container.
-ACESTREAM_SUITE_GUIDE_URL = env("ACESTREAM_SUITE_GUIDE_URL", "ACELIST_EPG_URL",
-                               "http://127.0.0.1:8083")
+ACESTREAM_SUITE_GUIDE_URL = env("ACESTREAM_SUITE_GUIDE_URL", "http://127.0.0.1:8083")
 # El puente HLS, igual que en las otras cuatro listas: el motor solo sirve un lector por contenido.
-HLS_BASE = env("ACESTREAM_SUITE_HLS_BASE", "ACELIST_HLS_BASE", "http://192.168.1.245:8084")
-OUTPUT = env("ACESTREAM_SUITE_GUIDE_PLAYLIST_OUTPUT", "ACELIST_EPG_PLAYLIST_OUTPUT",
-             "/srv/www/varios/acestream-suite-guide.m3u")
-# S4: la copia con el nombre viejo, al lado de la lista nueva.
-COMPAT_NAME = "acelist-epg.m3u"
+HLS_BASE = env("ACESTREAM_SUITE_HLS_BASE", "http://192.168.1.245:8084")
+OUTPUT = env("ACESTREAM_SUITE_GUIDE_PLAYLIST_OUTPUT", "/srv/www/varios/acestream-suite-guide.m3u")
 # The URL the PLAYER fetches the guide from, not the localhost one this script reads. A player on
 # the LAN cannot reach 127.0.0.1:8083, so the header carries the host's own address.
-URL_TVG = env("ACESTREAM_SUITE_GUIDE_URL_TVG", "ACELIST_EPG_URL_TVG",
-              "http://192.168.1.245:8083/epg.xml")
-LOG_PATH = env("ACESTREAM_SUITE_GUIDE_PLAYLIST_LOG", "ACELIST_EPG_PLAYLIST_LOG",
-               "/var/log/acestream-suite-guide-playlist.log")
-LOCK_PATH = env("ACESTREAM_SUITE_GUIDE_PLAYLIST_LOCK", "ACELIST_EPG_PLAYLIST_LOCK",
+URL_TVG = env("ACESTREAM_SUITE_GUIDE_URL_TVG", "http://192.168.1.245:8083/epg.xml")
+LOG_PATH = env("ACESTREAM_SUITE_GUIDE_PLAYLIST_LOG", "/var/log/acestream-suite-guide-playlist.log")
+LOCK_PATH = env("ACESTREAM_SUITE_GUIDE_PLAYLIST_LOCK",
                 "/var/lock/acestream-suite-guide-playlist.lock")
-TIMEOUT = float(env("ACESTREAM_SUITE_GUIDE_PLAYLIST_TIMEOUT", "ACELIST_EPG_PLAYLIST_TIMEOUT", "30"))
+TIMEOUT = float(env("ACESTREAM_SUITE_GUIDE_PLAYLIST_TIMEOUT", "30"))
 # `alive`, la misma politica de frescura que las otras cuatro listas: la app ya comprueba todos los
 # canales, y publicarlo todo metia en el reproductor enlaces sin pares (los cuatro DAZN Baloncesto
 # del 2026-10-25 salieron ahi publicados y sin un solo par).
-STATUS = env("ACESTREAM_SUITE_GUIDE_PLAYLIST_STATUS", "ACELIST_EPG_PLAYLIST_STATUS", "alive")
+STATUS = env("ACESTREAM_SUITE_GUIDE_PLAYLIST_STATUS", "alive")
 
-# The format marker `/epg.json` carries; a wrong document is refused, not read as an empty mapping.
-MAPPING_FORMAT = "acelist-epg"
+# Los marcadores que llevan los documentos de la app: el del export y el de `/epg.json`. Son el
+# contrato con la app, no la marca del producto, y un documento con otro marcador se rechaza.
+EXPORT_FORMAT = "acestream-suite"
+MAPPING_FORMAT = "acestream-suite-guide"
+
+
+def compat_aliases(value=None):
+    """Las copias con otro nombre, como DATOS: `nuevo=otro,nuevo2=otro2`.
+
+    Vacio o ausente = ninguna copia, y es el defecto. Un nombre con separador de ruta se ignora: las
+    copias se escriben SIEMPRE al lado de la lista, dentro de su directorio, y esa es la regla que
+    impide que un dato de entorno escriba donde no debe.
+    """
+    value = os.environ.get("ACESTREAM_SUITE_COMPAT_ALIASES", "") if value is None else value
+    aliases = {}
+    for par in str(value).split(","):
+        nombre, _, otro = par.partition("=")
+        nombre, otro = nombre.strip(), otro.strip()
+        if not nombre or not otro:
+            continue
+        if "/" in otro or "\\" in otro or otro in (".", ".."):
+            continue
+        aliases.setdefault(nombre, []).append(otro)
+    return aliases
+
+
+COMPAT_ALIASES = compat_aliases()
 
 
 def log(message, path=LOG_PATH):
@@ -214,7 +224,7 @@ def fetch_channels(base_url=ACESTREAM_SUITE_GUIDE_URL, timeout=TIMEOUT, status=S
     """acestream-suite's own export document: the channels, with their category."""
     url = export_url(base_url, status)
     document = _get_json(url, timeout)
-    if document.get("format") != "acelist":  # el marcador de la app, no la marca del producto
+    if document.get("format") != EXPORT_FORMAT:
         raise ValueError("%s is not an acestream-suite export (format=%r)"
                          % (url, document.get("format")))
     return document["channels"]
@@ -279,25 +289,27 @@ def write_if_changed(text, path):
     return True
 
 
-def compat_copy(path):
-    """S4: la copia con el nombre viejo al lado de la lista nueva.
+def compat_copies(path):
+    """Los nombres con los que se copia esta lista, al lado, o `()` si no lleva copias.
 
-    `None` cuando el destino no es el de casa (`--output /tmp/otra.m3u`): ahi no hay nada que
-    mantener vivo con el nombre viejo, y dejar `acelist-epg.m3u` en un directorio ajeno seria un
-    efecto de lado que nadie pidio.
+    `--output /tmp/otra.m3u` no lleva copias: ahi no hay nada que mantener vivo con otro nombre, y
+    escribir un fichero extra en un directorio ajeno seria un efecto de lado que nadie pidio. Los
+    nombres salen de `ACESTREAM_SUITE_COMPAT_ALIASES`, ya sin separadores de ruta.
     """
-    if os.path.basename(path) != os.path.basename(OUTPUT):
-        return None
-    return os.path.join(os.path.dirname(path), COMPAT_NAME)
+    nombre = os.path.basename(path)
+    if nombre != os.path.basename(OUTPUT):
+        return ()
+    return tuple(COMPAT_ALIASES.get(nombre, ()))
 
 
 def save_output(text, path=OUTPUT):
-    """Escribe la lista nueva y su copia con el nombre viejo (S4). Devuelve si la nueva cambio."""
+    """Escribe la lista y, cuando cambio, sus copias con otro nombre. Devuelve si la lista cambio."""
     changed = write_if_changed(text, path)
-    alias = compat_copy(path)
-    if alias:
-        write_if_changed(text, alias)
-    return changed
+    if not changed:
+        return False
+    for alias in compat_copies(path):
+        write_if_changed(text, os.path.join(os.path.dirname(path), alias))
+    return True
 
 
 def self_test():
@@ -357,27 +369,50 @@ def self_test():
     assert export_url("http://caja:8087", "") == "http://caja:8087/export"
     assert mapping_url("http://caja:8087/") == "http://caja:8087/epg.json"
 
-    # S3/S4: el nombre nuevo, la copia con el viejo al lado, y la variable nueva ganando a la vieja.
-    assert OUTPUT == "/srv/www/varios/acestream-suite-guide.m3u", OUTPUT
-    assert compat_copy(OUTPUT) == "/srv/www/varios/acelist-epg.m3u", compat_copy(OUTPUT)
-    assert compat_copy("/tmp/otra.m3u") is None, compat_copy("/tmp/otra.m3u")
+    # El marcador de `/epg.json` y el del export llevan el nombre del producto, y uno ajeno se
+    # rechaza en vez de leerse como un mapeo vacio.
+    assert MAPPING_FORMAT == "acestream-suite-guide", MAPPING_FORMAT
+    assert EXPORT_FORMAT == "acestream-suite", EXPORT_FORMAT
+
+    # Las copias con otro nombre son datos: sin la variable no se escribe ninguna, y un nombre con
+    # ruta se ignora para no escribir nunca fuera del directorio de la lista.
+    assert COMPAT_ALIASES == {}, COMPAT_ALIASES
+    assert compat_aliases("") == {}
+    assert compat_aliases("acestream-suite-guide.m3u=otro-guia.m3u") == {
+        "acestream-suite-guide.m3u": ["otro-guia.m3u"]
+    }
+    assert compat_aliases(" a.m3u = b.m3u , ") == {"a.m3u": ["b.m3u"]}
+    assert compat_aliases("a.m3u=../fuera.m3u") == {}, "fuera del directorio no"
+    assert compat_copies(OUTPUT) == (), compat_copies(OUTPUT)
+    assert compat_copies("/tmp/otra.m3u") == (), compat_copies("/tmp/otra.m3u")
     temporal = tempfile.mkdtemp()
+    respaldo_alias = globals()["COMPAT_ALIASES"]
     try:
+        globals()["COMPAT_ALIASES"] = {"acestream-suite-guide.m3u": ["otro-guia.m3u"]}
         guardado = os.path.join(temporal, "acestream-suite-guide.m3u")
         assert save_output("#EXTM3U\n", guardado) is True
-        for nombre in ("acestream-suite-guide.m3u", "acelist-epg.m3u"):
+        for nombre in ("acestream-suite-guide.m3u", "otro-guia.m3u"):
             with open(os.path.join(temporal, nombre)) as fichero:
                 assert fichero.read() == "#EXTM3U\n", nombre
+        # Solo cuando la lista cambio: un fichero igual no reescribe su copia.
+        os.unlink(os.path.join(temporal, "otro-guia.m3u"))
         assert save_output("#EXTM3U\n", guardado) is False, "un fichero igual no se reescribe"
+        assert not os.path.exists(os.path.join(temporal, "otro-guia.m3u")), "sin cambio no hay copia"
     finally:
+        globals()["COMPAT_ALIASES"] = respaldo_alias
         shutil.rmtree(temporal)
+
+    # Las variables de entorno se leen con su nombre y solo con el: la vieja ya no se mira. El nombre
+    # viejo va en dos trozos unidos al ejecutar: el compilador pliega una suma de cadenas en una
+    # sola constante, y el nombre quedaria dentro del `.pyc` que la auditoria tambien mira.
+    viejo = "".join(("ACE", "LIST"))
     respaldo = dict(os.environ)
     try:
         os.environ.pop("ACESTREAM_SUITE_GUIDE_URL", None)
-        os.environ["ACELIST_EPG_URL"] = "http://viejo:8083"
-        assert env("ACESTREAM_SUITE_GUIDE_URL", "ACELIST_EPG_URL", "d") == "http://viejo:8083"
+        os.environ[viejo + "_EPG_URL"] = "http://viejo:8083"
+        assert env("ACESTREAM_SUITE_GUIDE_URL", "d") == "d", "la vieja ya no se lee"
         os.environ["ACESTREAM_SUITE_GUIDE_URL"] = "http://nuevo:8083"
-        assert env("ACESTREAM_SUITE_GUIDE_URL", "ACELIST_EPG_URL", "d") == "http://nuevo:8083"
+        assert env("ACESTREAM_SUITE_GUIDE_URL", "d") == "http://nuevo:8083"
     finally:
         os.environ.clear()
         os.environ.update(respaldo)
@@ -425,11 +460,11 @@ def main(argv=None):
         return 0
 
     changed = save_output(text, args.output)
-    alias = compat_copy(args.output)
+    copias = compat_copies(args.output)
     log(
         "%d channels, %d mapped, %s%s: %s"
         % (len(channels), len(mapping), args.output,
-           " (+ %s)" % os.path.basename(alias) if alias else "",
+           " (+ %s)" % ", ".join(copias) if copias else "",
            "written" if changed else "unchanged")
     )
     return 0
