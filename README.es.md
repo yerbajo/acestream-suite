@@ -1,6 +1,6 @@
 # acestream-suite
 
-[English](README.md) · **Español**
+🇬🇧 [English](README.md) · 🇪🇸 **Español** · 🇫🇷 [Français](README.fr.md) · 🇮🇹 [Italiano](README.it.md) · 🇩🇪 [Deutsch](README.de.md) · 🇷🇺 [Русский](README.ru.md) · 🇨🇳 [中文](README.zh.md) · 🇯🇵 [日本語](README.ja.md)
 
 <p align="center"><img src="assets/logo-3d.png" alt="acestream-suite" width="560"></p>
 
@@ -205,7 +205,7 @@ contenedor (`docker exec acestream-suite python3 -m app.cli epg-refresh`).
 
 ## Documentación
 
-- `README.es.md` — este documento en español.
+- Ocho idiomas: el conmutador de arriba enlaza este documento en inglés, francés, italiano, alemán, ruso, chino y japonés.
 - `LICENSE` — MIT para el trabajo propio y la procedencia del código de la aplicación.
 - En el propio código: cada módulo lleva su docstring con lo que decide y por qué; `python -m app.cli
   --help` y el `--help` de cada script documentan sus opciones.

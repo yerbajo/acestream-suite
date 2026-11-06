@@ -1,6 +1,6 @@
 # acestream-suite
 
-**English** · [Español](README.es.md)
+🇬🇧 **English** · 🇪🇸 [Español](README.es.md) · 🇫🇷 [Français](README.fr.md) · 🇮🇹 [Italiano](README.it.md) · 🇩🇪 [Deutsch](README.de.md) · 🇷🇺 [Русский](README.ru.md) · 🇨🇳 [中文](README.zh.md) · 🇯🇵 [日本語](README.ja.md)
 
 <p align="center"><img src="assets/logo-3d.png" alt="acestream-suite" width="560"></p>
 
@@ -200,7 +200,7 @@ checks with no network and no files. The playlist jobs need a web server serving
 
 ## Documentation
 
-- `README.es.md` — this document in Spanish.
+- Eight languages: the switcher at the top links this document in Spanish, French, Italian, German, Russian, Chinese and Japanese.
 - `LICENSE` — MIT for the work authored here, and the provenance of the application code.
 - Inline: every module carries a docstring that says what it decides and why; `python -m app.cli --help`
   and each script's `--help` document their own options.
