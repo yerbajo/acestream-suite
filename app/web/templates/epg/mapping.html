@@ -6,42 +6,42 @@
    stores a decision, the other clears it, and both come back here as a GET. #}
 {% extends "base.html" %}
 
-{% block title %}Guía · acestream-suite{% endblock %}
+{% block title %}{{ t("Guía") }} · acestream-suite{% endblock %}
 
 {# The matcher's own kind names, in the words the person reading the page uses, and the score
    printed with two decimals so a 0.85 and a 0.96 are told apart at a glance. #}
-{% set kind_names = {"exact": "exacta", "containment": "continencia", "fuzzy": "difusa", "below": "débil"} %}
+{% set kind_names = {"exact": t("exacta"), "containment": t("continencia"), "fuzzy": t("difusa"), "below": t("débil")} %}
 {% set score_fmt = "%.2f" %}
 
 {% block content %}
 <div class="page-head">
-  <h1>Guía</h1>
+  <h1>{{ t("Guía") }}</h1>
   <div class="actions">
-    <a class="button" href="{{ url_for('channel_list') }}">Canales</a>
+    <a class="button" href="{{ url_for('channel_list') }}">{{ t("Canales") }}</a>
   </div>
 </div>
-<p class="hint">Un canal con guía muestra su programación en la lista. Uno sin guía se queda en blanco, y en blanco es mejor que mal asignado: decir que se emite lo que no se emite es peor que no decir nada, así que lo dudoso se deja sin asignar.</p>
+<p class="hint">{{ t("Un canal con guía muestra su programación en la lista. Uno sin guía se queda en blanco, y en blanco es mejor que mal asignado: decir que se emite lo que no se emite es peor que no decir nada, así que lo dudoso se deja sin asignar.") }}</p>
 
 {% if mapping.total == 0 %}
 <section class="empty-state">
-  <p class="empty-title">Todavía no hay canales en el catálogo.</p>
-  <p>En cuanto haya canales sembrados, se les podrá asignar la guía desde aquí.</p>
+  <p class="empty-title">{{ t("Todavía no hay canales en el catálogo.") }}</p>
+  <p>{{ t("En cuanto haya canales sembrados, se les podrá asignar la guía desde aquí.") }}</p>
 </section>
 {% elif mapping.guides == 0 %}
 <section class="empty-state">
-  <p class="empty-title">Todavía no hay canales de guía.</p>
-  <p>La guía está vacía, así que no hay nada a lo que asignar un canal. Ejecuta <code>python -m app.cli epg-refresh</code> cuando haya fuentes configuradas.</p>
+  <p class="empty-title">{{ t("Todavía no hay canales de guía.") }}</p>
+  <p>{{ t("La guía está vacía, así que no hay nada a lo que asignar un canal. Ejecuta") }} <code>python -m app.cli epg-refresh</code> {{ t("cuando haya fuentes configuradas.") }}</p>
 </section>
 {% else %}
-<p class="result-count">{{ mapping.mapped }} con guía · {{ mapping.unmapped_total }} sin guía · {{ mapping.manual }} decisiones manuales · {{ mapping.guides }} canales de guía</p>
+<p class="result-count">{{ t("{mapped} con guía · {unmapped} sin guía · {manual} decisiones manuales · {guides} canales de guía").format(mapped=mapping.mapped, unmapped=mapping.unmapped_total, manual=mapping.manual, guides=mapping.guides) }}</p>
 
 {% if mapping.unmapped_total == 0 %}
 <section class="empty-state">
-  <p class="empty-title">Todos los canales tienen guía.</p>
-  <p>No queda ninguno por asignar.</p>
+  <p class="empty-title">{{ t("Todos los canales tienen guía.") }}</p>
+  <p>{{ t("No queda ninguno por asignar.") }}</p>
 </section>
 {% else %}
-<h2>Canales sin guía</h2>
+<h2>{{ t("Canales sin guía") }}</h2>
 <ul class="mapping-list">
   {% for item in mapping.unmapped %}
   <li class="mapping-item">
@@ -50,34 +50,34 @@
       <span class="hint">[{{ item.channel_id }}]</span>
     </p>
     {% if item.manual %}
-    <p class="hint">Decisión manual: el matcher no propone nada. Quita la decisión al final de la página para volver a ver propuestas.</p>
+    <p class="hint">{{ t("Decisión manual: el matcher no propone nada. Quita la decisión al final de la página para volver a ver propuestas.") }}</p>
     {% else %}
     <p class="candidates">
       {% for candidate in item.candidates %}
       <span class="candidate">
         <form class="inline" method="post" action="{{ url_for('epg_mapping_set', channel_id=item.channel_id) }}" hx-disabled-elt="find button">
           <input type="hidden" name="guide_id" value="{{ candidate.epg_channel_id }}">
-          <button type="submit" class="button">Asignar</button>
+          <button type="submit" class="button">{{ t("Asignar") }}</button>
         </form>
         <span class="candidate-name">{{ candidate.name }}</span>
         <span class="hint">{{ score_fmt | format(candidate.score) }} {{ kind_names[candidate.kind] }}</span>
         {% if candidate.leftover %}<span class="hint candidate-leftover">{{ candidate.leftover }}</span>{% endif %}
       </span>
       {% else %}
-      <span class="hint">El matcher no propone nada.</span>
+      <span class="hint">{{ t("El matcher no propone nada.") }}</span>
       {% endfor %}
     </p>
     {% endif %}
     <div class="guide-pick">
-      <input type="search" name="q" class="guide-search" placeholder="Buscar en la guía"
-             aria-label="Buscar en la guía para {{ item.title }}"
+      <input type="search" name="q" class="guide-search" placeholder="{{ t('Buscar en la guía') }}"
+             aria-label="{{ t('Buscar en la guía para {title}').format(title=item.title) }}"
              hx-get="{{ url_for('epg_mapping_guides') }}" hx-target="#guides-{{ item.channel_id }}"
              hx-trigger="input changed delay:300ms, search">
       <form class="inline" method="post" action="{{ url_for('epg_mapping_set', channel_id=item.channel_id) }}" hx-disabled-elt="find button">
-        <select id="guides-{{ item.channel_id }}" name="guide_id" aria-label="Canal de guía para {{ item.title }}">
-          <option value="">— Busca y elige —</option>
+        <select id="guides-{{ item.channel_id }}" name="guide_id" aria-label="{{ t('Canal de guía para {title}').format(title=item.title) }}">
+          <option value="">{{ t("— Busca y elige —") }}</option>
         </select>
-        <button type="submit" class="button">Asignar</button>
+        <button type="submit" class="button">{{ t("Asignar") }}</button>
       </form>
     </div>
   </li>
@@ -85,24 +85,24 @@
 </ul>
 
 {% if total_pages > 1 %}
-<nav class="pagination" aria-label="Páginas">
-  {% if page > 1 %}<a class="button" href="{{ url_for('epg_mapping') }}?page={{ page - 1 }}">← Anterior</a>{% endif %}
-  <span class="hint">Página {{ page }} de {{ total_pages }}</span>
-  {% if page < total_pages %}<a class="button" href="{{ url_for('epg_mapping') }}?page={{ page + 1 }}">Siguiente →</a>{% endif %}
+<nav class="pagination" aria-label="{{ t('Páginas') }}">
+  {% if page > 1 %}<a class="button" href="{{ url_for('epg_mapping') }}?page={{ page - 1 }}">← {{ t("Anterior") }}</a>{% endif %}
+  <span class="hint">{{ t("Página {page} de {total}").format(page=page, total=total_pages) }}</span>
+  {% if page < total_pages %}<a class="button" href="{{ url_for('epg_mapping') }}?page={{ page + 1 }}">{{ t("Siguiente") }} →</a>{% endif %}
 </nav>
 {% endif %}
 {% endif %}
 
 {% if decisions %}
-<h2>Decisiones manuales</h2>
+<h2>{{ t("Decisiones manuales") }}</h2>
 <div class="table-wrap">
   <table class="channels decisions">
     <thead>
       <tr>
-        <th scope="col">Canal</th>
-        <th scope="col">Guía</th>
-        <th scope="col">Quién</th>
-        <th scope="col"><span class="visually-hidden">Acciones</span></th>
+        <th scope="col">{{ t("Canal") }}</th>
+        <th scope="col">{{ t("Guía") }}</th>
+        <th scope="col">{{ t("Quién") }}</th>
+        <th scope="col"><span class="visually-hidden">{{ t("Acciones") }}</span></th>
       </tr>
     </thead>
     <tbody>
@@ -111,11 +111,11 @@
         <td class="title"><a href="{{ url_for('channel_detail', channel_id=decision.channel_id) }}">{{ decision.channel_title }}</a></td>
         {# A decision whose guide channel the feed dropped keeps its row and loses its name: the
            person clears it, the refresh does not. #}
-        <td>{% if decision.guide_name %}{{ decision.guide_name }}{% else %}<span class="hint">la guía desapareció</span>{% endif %}</td>
+        <td>{% if decision.guide_name %}{{ decision.guide_name }}{% else %}<span class="hint">{{ t("la guía desapareció") }}</span>{% endif %}</td>
         <td class="hint">{{ decision.created_by }}</td>
         <td class="row-actions">
           <form class="inline" method="post" action="{{ url_for('epg_mapping_clear', channel_id=decision.channel_id) }}" hx-disabled-elt="find button">
-            <button type="submit" class="button danger-outline">Quitar</button>
+            <button type="submit" class="button danger-outline">{{ t("Quitar") }}</button>
           </form>
         </td>
       </tr>

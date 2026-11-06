@@ -17,7 +17,7 @@
 <div class="field">
         <label for="{{ name }}">{{ label }}</label>
         <select id="{{ name }}" name="{{ name }}"{{ invalid(name) }}>
-          <option value="">Sin {{ unsaid }}</option>
+          <option value="">{{ t("Sin {unsaid}").format(unsaid=unsaid) }}</option>
           {% for code, choice in choices %}
           <option value="{{ code }}"{% if posted == code %} selected{% endif %}>{{ choice }} ({{ code }})</option>
           {% endfor %}
@@ -26,26 +26,26 @@
       </div>
 {%- endmacro %}
 
-{% block title %}Buscar · acestream-suite{% endblock %}
+{% block title %}{{ t("Buscar") }} · acestream-suite{% endblock %}
 
 {% block content %}
 <div class="page-head">
-  <h1>Buscar</h1>
+  <h1>{{ t("Buscar") }}</h1>
   <div class="actions">
-    <a class="button" href="{{ url_for('import_page') }}">Importar enlaces</a>
+    <a class="button" href="{{ url_for('import_page') }}">{{ t("Importar enlaces") }}</a>
   </div>
 </div>
 
-<p class="hint">Busca en <code>acesearch</code>, el índice del motor, por <strong>nombre de canal</strong>
-(no por partido). Lo que sale no está en el catálogo todavía.</p>
+<p class="hint">{{ t("Busca en") }} <code>acesearch</code>{{ t(", el índice del motor, por") }} <strong>{{ t("nombre de canal") }}</strong>
+{{ t("(no por partido). Lo que sale no está en el catálogo todavía.") }}</p>
 
 <form class="filters" method="get" action="{{ url_for('search_page') }}" role="search">
   <div class="field field-search">
-    <label for="q">Canal</label>
-    <input id="q" name="q" type="search" value="{{ query }}" placeholder="dazn, movistar, euroliga…" autofocus>
+    <label for="q">{{ t("Canal") }}</label>
+    <input id="q" name="q" type="search" value="{{ query }}" placeholder="{{ t('dazn, movistar, euroliga…') }}" autofocus>
   </div>
   <div class="filter-actions">
-    <button class="button primary" type="submit">Buscar</button>
+    <button class="button primary" type="submit">{{ t("Buscar") }}</button>
   </div>
 </form>
 
@@ -58,31 +58,30 @@
 
 {% if result %}
 <p class="notice notice-ok" role="status">
-  {{ result.created|length }} canal(es) añadidos, {{ result.duplicates|length }} duplicados y
-  {{ result.invalid|length }} inválidos.
+  {{ t("{created} canal(es) añadidos, {duplicates} duplicados y {invalid} inválidos.").format(created=result.created|length, duplicates=result.duplicates|length, invalid=result.invalid|length) }}
 </p>
 {% if engine_down %}
-<p class="notice notice-error" role="alert">El engine no responde: el alta está hecha y las comprobaciones quedan pendientes.</p>
+<p class="notice notice-error" role="alert">{{ t("El engine no responde: el alta está hecha y las comprobaciones quedan pendientes.") }}</p>
 {% endif %}
 {% endif %}
 
 {% if hits %}
-<p class="result-count">{{ hits|length }} resultado(s) para «{{ query }}»</p>
+<p class="result-count">{{ t("{count} resultado(s) para «{query}»").format(count=hits|length, query=query) }}</p>
 <form method="post" action="{{ url_for('search_add') }}">
   <input type="hidden" name="query" value="{{ query }}">
   <div class="table-wrap">
     <table class="channels">
-      <caption class="visually-hidden">Resultados para «{{ query }}». Marca los canales que quieras añadir al catálogo.</caption>
+      <caption class="visually-hidden">{{ t("Resultados para «{query}». Marca los canales que quieras añadir al catálogo.").format(query=query) }}</caption>
       <thead>
         <tr>
-          <th scope="col"><span class="visually-hidden">Añadir</span></th>
-          <th scope="col">Canal</th>
-          <th scope="col" class="num">Bitrate</th>
-          <th scope="col" class="num">Disponible</th>
-          <th scope="col" class="num">Pares</th>
-          <th scope="col">Etiquetas</th>
-          <th scope="col">Hash</th>
-          <th scope="col"><span class="visually-hidden">Reproducir</span></th>
+          <th scope="col"><span class="visually-hidden">{{ t("Añadir") }}</span></th>
+          <th scope="col">{{ t("Canal") }}</th>
+          <th scope="col" class="num">{{ t("Bitrate") }}</th>
+          <th scope="col" class="num">{{ t("Disponible") }}</th>
+          <th scope="col" class="num">{{ t("Pares") }}</th>
+          <th scope="col">{{ t("Etiquetas") }}</th>
+          <th scope="col">{{ t("Hash") }}</th>
+          <th scope="col"><span class="visually-hidden">{{ t("Reproducir") }}</span></th>
         </tr>
       </thead>
       <tbody>
@@ -93,7 +92,7 @@
               With the title first, marking one of them added nothing at all. -#}
           <td><input type="checkbox" name="pick"
                      value="acestream://{{ hit.content_id }} | {{ hit.name }}"
-                     aria-label="Añadir {{ hit.name }} al catálogo"></td>
+                     aria-label="{{ t('Añadir {name} al catálogo').format(name=hit.name) }}"></td>
           <td class="title">{{ hit.name }}</td>
           <td class="num">{{ hit.bitrate_text }}</td>
           <td class="num">{{ hit.availability_text }}</td>
@@ -101,16 +100,16 @@
             {% set checked = known.get(hit.content_id) %}
             <div id="peers-{{ loop.index }}">
               {%- if checked -%}
-                <strong>{{ checked.peers if checked.peers is not none else "—" }}</strong> pares
+                <strong>{{ checked.peers if checked.peers is not none else "—" }}</strong> {{ t("pares") }}
                 <span class="hint">{{ checked.checked_at|ago }}</span>
               {%- else -%}
-                <span class="hint">sin dato</span>
+                <span class="hint">{{ t("sin dato") }}</span>
               {%- endif -%}
             </div>
             <button type="button" class="button"
                     hx-post="{{ url_for('search_peers') }}"
                     hx-vals='{"content_id": "{{ hit.content_id }}"}'
-                    hx-target="#peers-{{ loop.index }}" hx-swap="innerHTML">Medir</button>
+                    hx-target="#peers-{{ loop.index }}" hx-swap="innerHTML">{{ t("Medir") }}</button>
           </td>
           <td>{{ hit.tags_text }}</td>
           <td><code>{{ hit.content_id[:12] }}…</code></td>
@@ -118,7 +117,7 @@
             <button type="button" class="button"
                     hx-post="{{ url_for('search_play') }}"
                     hx-vals='{"content_id": "{{ hit.content_id }}"}'
-                    hx-target="#play-{{ loop.index }}" hx-swap="innerHTML">Reproducir</button>
+                    hx-target="#play-{{ loop.index }}" hx-swap="innerHTML">{{ t("Reproducir") }}</button>
             <div id="play-{{ loop.index }}" class="play-slot" aria-live="polite"></div>
           </td>
         </tr>
@@ -128,12 +127,12 @@
   </div>
 
   <fieldset class="search-add">
-    <legend>Añadir los marcados</legend>
+    <legend>{{ t("Añadir los marcados") }}</legend>
     <div class="field-row">
       <div class="field">
-        <label for="category_id">Categoría</label>
+        <label for="category_id">{{ t("Categoría") }}</label>
         <select id="category_id" name="category_id"{{ invalid("category_id") }}>
-          <option value="">Sin categoría</option>
+          <option value="">{{ t("Sin categoría") }}</option>
           {% for category in categories %}
           <option value="{{ category.id }}"{% if values.category_id == category.id|string %} selected{% endif %}>{{ category.name }}</option>
           {% endfor %}
@@ -141,23 +140,23 @@
         {{ field_error("category_id") }}
       </div>
       <div class="field">
-        <label for="new_category">…o una categoría nueva</label>
+        <label for="new_category">{{ t("…o una categoría nueva") }}</label>
         <input id="new_category" name="new_category" type="text" value="{{ values.new_category }}"{{ invalid("new_category") }}>
         {{ field_error("new_category") }}
       </div>
     </div>
     <div class="field-row">
-      {{ code_field("language", "Idioma", "idioma", language_choices()) }}
-      {{ code_field("country", "País", "país", country_choices(), upper=true) }}
+      {{ code_field("language", t("Idioma"), t("idioma"), language_choices()) }}
+      {{ code_field("country", t("País"), t("país"), country_choices(), upper=true) }}
     </div>
     <div class="actions">
-      <button type="submit" class="button primary">Añadir al catálogo</button>
-      <p class="hint">Se verifican en segundo plano, como cualquier alta.</p>
+      <button type="submit" class="button primary">{{ t("Añadir al catálogo") }}</button>
+      <p class="hint">{{ t("Se verifican en segundo plano, como cualquier alta.") }}</p>
     </div>
   </fieldset>
 </form>
 {% elif query and not problem %}
-<p class="notice">La búsqueda no devolvió nada para «{{ query }}». Prueba con el nombre del canal
-(<code>dazn</code>, <code>movistar</code>, <code>euroliga</code>), no con el del partido.</p>
+<p class="notice">{{ t("La búsqueda no devolvió nada para «{query}». Prueba con el nombre del canal").format(query=query) }}
+(<code>dazn</code>, <code>movistar</code>, <code>euroliga</code>){{ t(", no con el del partido.") }}</p>
 {% endif %}
 {% endblock %}

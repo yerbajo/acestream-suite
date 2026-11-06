@@ -6,20 +6,20 @@
 <div id="engine-status" class="engine-status{% if state %} {{ state }}{% endif %}" role="status"
      hx-get="{{ url_for('engine_status') }}" hx-swap="outerHTML"
      hx-trigger="{{ 'every 30s' if answered else 'load, every 30s' }}"
-     {% if answered %}title="Engine en {{ engine_url }}"{% endif %}>
+     {% if answered %}title="{{ t('Engine en {url}').format(url=engine_url) }}"{% endif %}>
   <span class="engine-dot" aria-hidden="true"></span>
   {% if not answered %}
-  <span>Ace Stream…</span>
+  <span>{{ t("Ace Stream…") }}</span>
   {% elif engine_version %}
   <span>Ace Stream {{ engine_version.version }}</span>
   {% else %}
-  <span>Ace Stream apagado</span>
+  <span>{{ t("Ace Stream apagado") }}</span>
   {# Why it is down, and the one action that can fix it from the browser. #}
-  {% if engine_error %}<span class="engine-error">{{ engine_error }}</span>{% endif %}
+  {% if engine_error %}<span class="engine-error">{{ t(engine_error) }}</span>{% endif %}
   {% if engine_can_start %}
   <button type="button" class="engine-start" hx-post="{{ url_for('engine_start') }}"
           hx-target="#engine-status" hx-swap="outerHTML" hx-disabled-elt="this">
-    <span class="when-idle">Iniciar</span><span class="when-busy">Iniciando…</span>
+    <span class="when-idle">{{ t("Iniciar") }}</span><span class="when-busy">{{ t("Iniciando…") }}</span>
   </button>
   {% endif %}
   {% endif %}

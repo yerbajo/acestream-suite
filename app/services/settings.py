@@ -1,7 +1,7 @@
 """The settings the user can change, and how they are read from and written to the database."""
 
 from collections.abc import Callable
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -16,6 +16,7 @@ from app.config import (
     VLC_PATH,
 )
 from app.db.models import Setting
+from app.i18n import resolve
 from app.services.screenshots import CaptureSettings
 from app.services.verification import VerificationSettings
 
@@ -40,6 +41,9 @@ class AppSettings:
     vlc_path: str | None = VLC_PATH
     ffmpeg_path: str | None = FFMPEG_PATH
     acestream_path: str | None = None  # the installed engine, kept for reference
+    # Read when the settings are built, not when this module is imported, so the environment
+    # variable counts while nothing is saved and a saved value takes over afterwards.
+    language: str = field(default_factory=resolve)
 
     @property
     def resolved_search_url(self) -> str:
@@ -66,6 +70,7 @@ _READERS: dict[str, Callable[[str], object]] = {
     "vlc_path": str,
     "ffmpeg_path": str,
     "acestream_path": str,
+    "language": str,
 }
 assert _READERS.keys() == {f.name for f in fields(AppSettings)}
 

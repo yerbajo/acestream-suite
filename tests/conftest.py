@@ -1,3 +1,4 @@
+import json
 import os
 import struct
 import tempfile
@@ -12,6 +13,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from app import i18n
 from app.acestream.client import EngineClient
 from app.db.base import Base
 from app.db.session import make_engine, make_session_factory
@@ -40,11 +42,37 @@ def web(db_factory):
     """Test client for the web UI, backed by `db_factory`, with its own check runner."""
     app.dependency_overrides[get_session_factory] = lambda: db_factory
     previous_runner = app.state.check_runner
+    previous_factory = app.state.session_factory
+    # Two ways to the same database: the routes' dependency, and the factory a page reads the
+    # saved language through before it is drawn.
+    app.state.session_factory = db_factory
     app.state.check_runner = CheckRunner()
     yield TestClient(app, base_url="http://127.0.0.1")
     app.state.check_runner.shutdown()
     app.state.check_runner = previous_runner
+    app.state.session_factory = previous_factory
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def catalogs(tmp_path, monkeypatch):
+    """A catalog folder of this test's own, so no test writes into the repository.
+
+    It starts empty, which is also how a language nobody has translated is exercised. Call what
+    it returns to write one: the entries, or the raw text for a file that does not parse.
+    """
+    folder = tmp_path / "i18n"
+    folder.mkdir()
+    monkeypatch.setattr(i18n, "CATALOG_DIR", folder)
+    i18n.catalog.cache_clear()
+
+    def write(language: str, entries: dict[str, str] | str) -> None:
+        body = entries if isinstance(entries, str) else json.dumps(entries, ensure_ascii=False)
+        (folder / f"catalog.{language}.json").write_text(body, encoding="utf-8")
+
+    yield write
+    # The cache is keyed by language alone, so the real folder has to be read again.
+    i18n.catalog.cache_clear()
 
 
 @pytest.fixture

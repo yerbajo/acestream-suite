@@ -2,7 +2,7 @@
    when this page shows channel states and must reload once the batch ends, or "" when it must not. #}
 {% macro dismiss() -%}
 <button type="button" class="link-button" hx-post="{{ url_for('checks_dismiss') }}"
-        hx-target="#batch-status" hx-swap="outerHTML">Cerrar</button>
+        hx-target="#batch-status" hx-swap="outerHTML">{{ t("Cerrar") }}</button>
 {%- endmacro %}
 
 {# The headline of every state, plus whatever the state needs beside it (the caller's block). #}
@@ -16,20 +16,20 @@
 <div id="batch-status" class="batch running" role="status"
      hx-get="{{ url_for('checks_status') }}" hx-vals='{"watching": "{{ watch }}"}'
      hx-trigger="every 1s" hx-swap="outerHTML">
-  {% call line("Verificando canales: " ~ batch.done ~ " de " ~ batch.total) %}
-  <progress max="{{ batch.total }}" value="{{ batch.done }}">{{ batch.done }} de {{ batch.total }}</progress>
+  {% call line(t("Verificando canales: {done} de {total}").format(done=batch.done, total=batch.total)) %}
+  <progress max="{{ batch.total }}" value="{{ batch.done }}">{{ t("{done} de {total}").format(done=batch.done, total=batch.total) }}</progress>
   {% endcall %}
   {% include "_batch_counts.html" %}
 </div>
 {% elif batch.aborted %}
 <div id="batch-status" class="batch aborted" role="alert">
-  {% call line("Verificación interrumpida: Ace Stream no responde.") %}{{ dismiss() }}{% endcall %}
-  <p class="hint">Se verificaron {{ batch.done }} de {{ batch.total }} canales; el resto quedó como estaba. Abre Ace Stream y vuelve a verificar.</p>
+  {% call line(t("Verificación interrumpida: Ace Stream no responde.")) %}{{ dismiss() }}{% endcall %}
+  <p class="hint">{{ t("Se verificaron {done} de {total} canales; el resto quedó como estaba. Abre Ace Stream y vuelve a verificar.").format(done=batch.done, total=batch.total) }}</p>
   {% include "_batch_counts.html" %}
 </div>
 {% else %}
 <div id="batch-status" class="batch finished" role="status">
-  {% call line("Verificación terminada: " ~ batch.total ~ " " ~ ("canal" if batch.total == 1 else "canales")) %}{{ dismiss() }}{% endcall %}
+  {% call line(t("Verificación terminada: {total} {unit}").format(total=batch.total, unit=t("canal") if batch.total == 1 else t("canales"))) %}{{ dismiss() }}{% endcall %}
   {% include "_batch_counts.html" %}
 </div>
 {% endif %}

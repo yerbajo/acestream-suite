@@ -18,65 +18,65 @@
 {%- endmacro %}
 
 <div class="page-head">
-  <h1>Canales</h1>
+  <h1>{{ t("Canales") }}</h1>
   <div class="actions">
-    <nav class="view-switch" aria-label="Vista">
-      <a href="{{ url_for('channel_list') }}{{ query_string }}"{% if view == "list" %} aria-current="page"{% endif %}>Lista</a>
-      <a href="{{ url_for('channel_gallery') }}{{ query_string }}"{% if view == "gallery" %} aria-current="page"{% endif %}>Galería</a>
+    <nav class="view-switch" aria-label="{{ t('Vista') }}">
+      <a href="{{ url_for('channel_list') }}{{ query_string }}"{% if view == "list" %} aria-current="page"{% endif %}>{{ t("Lista") }}</a>
+      <a href="{{ url_for('channel_gallery') }}{{ query_string }}"{% if view == "gallery" %} aria-current="page"{% endif %}>{{ t("Galería") }}</a>
     </nav>
-    <a class="button primary" href="{{ url_for('channel_new') }}">Agregar canal</a>
+    <a class="button primary" href="{{ url_for('channel_new') }}">{{ t("Agregar canal") }}</a>
   </div>
 </div>
 
 {% if catalog_empty %}
 <section class="empty-state">
-  <p class="empty-title">Todavía no hay canales en el catálogo.</p>
-  <p>Cuando agregues un Content ID o un enlace <code>acestream://</code>, aparecerá aquí con su estado y su última verificación.</p>
-  <p><a class="button primary" href="{{ url_for('channel_new') }}">Agregar el primer canal</a></p>
+  <p class="empty-title">{{ t("Todavía no hay canales en el catálogo.") }}</p>
+  <p>{{ t("Cuando agregues un Content ID o un enlace") }} <code>acestream://</code>{{ t(", aparecerá aquí con su estado y su última verificación.") }}</p>
+  <p><a class="button primary" href="{{ url_for('channel_new') }}">{{ t("Agregar el primer canal") }}</a></p>
 </section>
 {% else %}
 <form class="filters" method="get" action="{{ view_url }}" role="search">
   <div class="field field-search">
-    <label for="q">Buscar</label>
-    <input id="q" name="q" type="search" placeholder="Título o Content ID" value="{{ query.text or '' }}">
+    <label for="q">{{ t("Buscar") }}</label>
+    <input id="q" name="q" type="search" placeholder="{{ t('Título o Content ID') }}" value="{{ query.text or '' }}">
   </div>
-  {% call filter_field("f-category", "category", "Categoría") %}
-    <option value="">Todas</option>
+  {% call filter_field("f-category", "category", t("Categoría")) %}
+    <option value="">{{ t("Todas") }}</option>
     {% for category in categories %}
     <option value="{{ category.id }}"{% if query.category_id == category.id %} selected{% endif %}>{{ category.name }}</option>
     {% endfor %}
   {% endcall %}
-  {% call filter_field("f-language", "language", "Idioma") %}
-    <option value="">Todos</option>
+  {% call filter_field("f-language", "language", t("Idioma")) %}
+    <option value="">{{ t("Todos") }}</option>
     {% for code in languages %}
     <option value="{{ code }}"{% if query.language == code %} selected{% endif %}>{{ language_name(code) }} ({{ code }})</option>
     {% endfor %}
   {% endcall %}
-  {% call filter_field("f-country", "country", "País") %}
-    <option value="">Todos</option>
+  {% call filter_field("f-country", "country", t("País")) %}
+    <option value="">{{ t("Todos") }}</option>
     {% for code in countries %}
     <option value="{{ code }}"{% if query.country == code %} selected{% endif %}>{{ country_name(code) }} ({{ code }})</option>
     {% endfor %}
   {% endcall %}
-  {% call filter_field("f-status", "status", "Estado") %}
-    <option value="">Todos</option>
+  {% call filter_field("f-status", "status", t("Estado")) %}
+    <option value="">{{ t("Todos") }}</option>
     {% for status, label in status_labels.items() %}
-    <option value="{{ status.value }}"{% if query.status == status.value %} selected{% endif %}>{{ label }}</option>
+    <option value="{{ status.value }}"{% if query.status == status.value %} selected{% endif %}>{{ t(label) }}</option>
     {% endfor %}
-    <option value="unchecked"{% if query.status == "unchecked" %} selected{% endif %}>Sin verificar</option>
+    <option value="unchecked"{% if query.status == "unchecked" %} selected{% endif %}>{{ t("Sin verificar") }}</option>
   {% endcall %}
-  {% call filter_field("f-resolution", "resolution", "Resolución") %}
-    <option value="">Todas</option>
+  {% call filter_field("f-resolution", "resolution", t("Resolución")) %}
+    <option value="">{{ t("Todas") }}</option>
     {% for value, label in resolution_labels.items() %}
-    <option value="{{ value.value }}"{% if query.resolution == value.value %} selected{% endif %}>{{ label }}</option>
+    <option value="{{ value.value }}"{% if query.resolution == value.value %} selected{% endif %}>{{ t(label) }}</option>
     {% endfor %}
-    <option value="unknown"{% if query.resolution == "unknown" %} selected{% endif %}>Sin detectar</option>
+    <option value="unknown"{% if query.resolution == "unknown" %} selected{% endif %}>{{ t("Sin detectar") }}</option>
   {% endcall %}
   {% if view == "gallery" %}
   {# Last, so both views keep the shared filters in the same order. The sort is a plain choice here:
      the gallery has no column headers to click, and the direction is the list's natural one. #}
-  {% call filter_field("f-sort", "sort", "Ordenar por") %}
-    {% for key, label in [("title", "Título"), ("status", "Estado"), ("peers", "Peers"), ("checked", "Última verificación"), ("created", "Alta")] %}
+  {% call filter_field("f-sort", "sort", t("Ordenar por")) %}
+    {% for key, label in [("title", t("Título")), ("status", t("Estado")), ("peers", t("Peers")), ("checked", t("Última verificación")), ("created", t("Alta"))] %}
     <option value="{{ key }}"{% if query.sort.value == key %} selected{% endif %}>{{ label }}</option>
     {% endfor %}
   {% endcall %}
@@ -85,23 +85,23 @@
   <input type="hidden" name="dir" value="{{ 'desc' if query.descending else 'asc' }}">
   {% endif %}
   <div class="filter-actions">
-    <button type="submit" class="button">Filtrar</button>
-    {% if filtered %}<a href="{{ view_url }}">Quitar filtros</a>{% endif %}
+    <button type="submit" class="button">{{ t("Filtrar") }}</button>
+    {% if filtered %}<a href="{{ view_url }}">{{ t("Quitar filtros") }}</a>{% endif %}
   </div>
 </form>
 
 <div class="list-bar">
-  <p class="result-count">{{ rows | length }} {{ "canal" if rows | length == 1 else "canales" }}{% if filtered %} con estos filtros{% endif %}</p>
+  <p class="result-count">{{ t("{count} {unit}").format(count=rows | length, unit=t("canal") if rows | length == 1 else t("canales")) }}{% if filtered %} {{ t("con estos filtros") }}{% endif %}</p>
   {% if rows %}
-  {% set listed = "este canal" if rows | length == 1 else ("los " ~ (rows | length) ~ " canales") %}
+  {% set listed = t("este canal") if rows | length == 1 else t("los {count} canales").format(count=rows | length) %}
   {# The batch actions come back to this same view, filters and all. #}
   {% set batch_query = query_string ~ (("&" if query_string else "?") ~ "view=gallery" if view == "gallery" else "") %}
-  {% set screenshots_confirm = "Regenerar las capturas de " ~ listed ~ ": se verifica cada canal y se saca una captura nueva de los que estén activos. Tarda bastante más que una verificación normal (unos segundos extra por canal activo). ¿Continuar?" %}
+  {% set screenshots_confirm = t("Regenerar las capturas de {listed}: se verifica cada canal y se saca una captura nueva de los que estén activos. Tarda bastante más que una verificación normal (unos segundos extra por canal activo). ¿Continuar?").format(listed=listed) %}
   <div class="list-actions">
     {# A plain download: htmx must not swap the JSON into the page. #}
-    <a class="button" href="{{ url_for('channel_export') }}{{ query_string }}" hx-boost="false" download>Exportar</a>
-    {{ batch_action(url_for('checks_screenshots') ~ batch_query, "Regenerar capturas", screenshots_confirm) }}
-    {{ batch_action(url_for('checks_start') ~ batch_query, "Verificar " ~ listed) }}
+    <a class="button" href="{{ url_for('channel_export') }}{{ query_string }}" hx-boost="false" download>{{ t("Exportar") }}</a>
+    {{ batch_action(url_for('checks_screenshots') ~ batch_query, t("Regenerar capturas"), screenshots_confirm) }}
+    {{ batch_action(url_for('checks_start') ~ batch_query, t("Verificar {listed}").format(listed=listed)) }}
   </div>
   {% endif %}
 </div>

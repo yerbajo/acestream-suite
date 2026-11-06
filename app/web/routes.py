@@ -24,6 +24,7 @@ from app.acestream.client import EngineClient, StreamSession
 from app.acestream.errors import ContentNotFoundError, EngineError
 from app.db.base import utcnow
 from app.db.models import Channel, Check
+from app.i18n import translate
 from app.services import (
     catalog,
     categories,
@@ -56,7 +57,7 @@ from app.web.deps import (
 from app.web.flash import ENGINE_DOWN, ENGINE_DOWN_SAVED, flash
 from app.web.forms import ChannelForm, resolve_category
 from app.web.query import parse_query
-from app.web.templating import templates
+from app.web.templating import language_in_force, templates
 
 router = APIRouter()
 
@@ -105,12 +106,14 @@ def screenshot_url(request: Request, path: str | None) -> str | None:
     return request.app.url_path_for("screenshots", path=name)
 
 
-def _channel_or_404(session: Session, channel_id: int) -> Channel:
+def _channel_or_404(session: Session, channel_id: int, language: str) -> Channel:
     """The channel the page asked for, with the same 404 every page gives for a missing one."""
     try:
         return channels.get_channel(session, channel_id)
     except NotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Canal no encontrado") from exc
+        raise HTTPException(
+            status_code=404, detail=translate("Canal no encontrado", language)
+        ) from exc
 
 
 def _same_app_path(target: str) -> str | None:
@@ -237,7 +240,7 @@ def _browse_context(request: Request, session: Session) -> dict:
     }
 
 
-def _gallery_sections(rows: list[ChannelRow]) -> list[GallerySection]:
+def _gallery_sections(rows: list[ChannelRow], language: str) -> list[GallerySection]:
     """One section per category, A-Z, with the uncategorised channels last.
 
     The rows keep the order they arrived in: choosing an order in the gallery means the same thing
@@ -250,7 +253,7 @@ def _gallery_sections(rows: list[ChannelRow]) -> list[GallerySection]:
     named = sorted((name for name in by_category if name is not None), key=str.casefold)
     sections = [GallerySection(name, by_category[name]) for name in named]
     if None in by_category:
-        sections.append(GallerySection(NO_CATEGORY, by_category[None]))
+        sections.append(GallerySection(translate(NO_CATEGORY, language), by_category[None]))
     return sections
 
 
@@ -285,7 +288,7 @@ def _queued(
 
 
 def _open_in_player(
-    client: EngineClient, settings: AppSettings, channel: Channel
+    client: EngineClient, settings: AppSettings, channel: Channel, language: str
 ) -> tuple[StreamSession | None, str | None]:
     """Open that stream in the player, or say which of the four things went wrong.
 
@@ -298,16 +301,19 @@ def _open_in_player(
             client, channel.content_id, title=channel.title, vlc_path=settings.vlc_path
         )
     except player.VlcNotFoundError:
-        return None, "No se encontró VLC. Instálalo o indica la ruta de vlc.exe en Ajustes."
-    except ContentNotFoundError:
-        return None, "El engine no pudo cargar este Content ID: puede que el enlace haya muerto."
-    except EngineError:
-        return None, (
-            f"El engine de Ace Stream no responde en {settings.engine_url}. "
-            "¿Está abierto Ace Stream?"
+        return None, translate(
+            "No se encontró VLC. Instálalo o indica la ruta de vlc.exe en Ajustes.", language
         )
+    except ContentNotFoundError:
+        return None, translate(
+            "El engine no pudo cargar este Content ID: puede que el enlace haya muerto.", language
+        )
+    except EngineError:
+        return None, translate(
+            "El engine de Ace Stream no responde en {url}. ¿Está abierto Ace Stream?", language
+        ).format(url=settings.engine_url)
     except player.PlayerError as exc:
-        return None, f"No se pudo abrir VLC: {exc}"
+        return None, translate("No se pudo abrir VLC: {detail}", language).format(detail=exc)
     return stream, None
 
 
@@ -340,7 +346,7 @@ def channel_export(request: Request, session: SessionDep):
 def channel_gallery(request: Request, session: SessionDep):
     """The same rows as tiles, gathered under the category each one belongs to."""
     context = _browse_context(request, session)
-    context["sections"] = _gallery_sections(context["rows"])
+    context["sections"] = _gallery_sections(context["rows"], language_in_force(request))
     return templates.TemplateResponse(request, "channels/gallery.html", context)
 
 
@@ -371,7 +377,7 @@ def channel_create(
     decision and losing it would be the worse answer; the redirect carries the notice that says so.
     """
     form = ChannelForm(title, link, category_id, new_category, language, country, resolution)
-    data = form.validate(session)
+    data = form.validate(session, language=language_in_force(request))
     if data is None:
         return _form_page(request, session, form)
     engine_up = probe() is not None
@@ -391,14 +397,21 @@ def channel_create(
             verify=engine_up,
         )
     except ServiceError as exc:
-        return _form_page(request, session, form, error=f"No se pudo guardar: {exc}")
+        return _form_page(
+            request,
+            session,
+            form,
+            error=translate("No se pudo guardar: {detail}", language_in_force(request)).format(
+                detail=exc
+            ),
+        )
     return _after_save(request, channel.id, engine_up=engine_up)
 
 
 @router.get("/channels/{channel_id}", response_class=HTMLResponse, name="channel_detail")
 def channel_detail(request: Request, session: SessionDep, channel_id: int):
     """One channel: its facts, its newest picture, and every check ever filed against it."""
-    channel = _channel_or_404(session, channel_id)
+    channel = _channel_or_404(session, channel_id, language_in_force(request))
     history = [
         CheckRow(check, screenshot_url(request, check.screenshot_path))
         for check in checks.list_checks(session, channel_id)
@@ -433,7 +446,7 @@ def channel_check(
     `next` is the filtered list the row's own button came from, so the person lands where they were;
     anything that is not a path of this app gives way to the channel's own page.
     """
-    _channel_or_404(session, channel_id)
+    _channel_or_404(session, channel_id, language_in_force(request))
     target = _same_app_path(next)
     response = (
         RedirectResponse(target, status_code=303)
@@ -465,7 +478,7 @@ def channel_screenshot(
     channel_id: int,
 ):
     """Check the channel again and take a fresh picture of it, whatever it had before."""
-    _channel_or_404(session, channel_id)
+    _channel_or_404(session, channel_id, language_in_force(request))
     return _queued(
         _see_other(request, "channel_detail", channel_id=channel_id),
         [channel_id],
@@ -483,8 +496,8 @@ def channel_play(
     request: Request, session: SessionDep, client: EngineDep, settings: SettingsDep, channel_id: int
 ):
     """Open the channel in whatever plays it, and answer with a fragment for the page's notices."""
-    channel = _channel_or_404(session, channel_id)
-    stream, error = _open_in_player(client, settings, channel)
+    channel = _channel_or_404(session, channel_id, language_in_force(request))
+    stream, error = _open_in_player(client, settings, channel, language_in_force(request))
     return templates.TemplateResponse(
         request,
         "channels/_play_result.html",
@@ -502,7 +515,7 @@ def channel_play(
 @router.get("/channels/{channel_id}/edit", response_class=HTMLResponse, name="channel_edit")
 def channel_edit(request: Request, session: SessionDep, channel_id: int):
     """The form filled with the channel as it is stored."""
-    channel = _channel_or_404(session, channel_id)
+    channel = _channel_or_404(session, channel_id, language_in_force(request))
     return _form_page(request, session, ChannelForm.from_channel(channel), channel=channel)
 
 
@@ -527,9 +540,9 @@ def channel_update(
     A title, a category, a language or a resolution are facts about the row, and the checks already
     stored still describe the same stream, so an edit of those never costs an engine request.
     """
-    channel = _channel_or_404(session, channel_id)
+    channel = _channel_or_404(session, channel_id, language_in_force(request))
     form = ChannelForm(title, link, category_id, new_category, language, country, resolution)
-    data = form.validate(session, channel_id=channel_id)
+    data = form.validate(session, channel_id=channel_id, language=language_in_force(request))
     if data is None:
         return _form_page(request, session, form, channel=channel)
     engine_up = data.content_id == channel.content_id or probe() is not None
@@ -550,7 +563,13 @@ def channel_update(
         )
     except ServiceError as exc:
         return _form_page(
-            request, session, form, channel=channel, error=f"No se pudo guardar: {exc}"
+            request,
+            session,
+            form,
+            channel=channel,
+            error=translate("No se pudo guardar: {detail}", language_in_force(request)).format(
+                detail=exc
+            ),
         )
     return _after_save(request, channel_id, engine_up=engine_up)
 
@@ -558,7 +577,7 @@ def channel_update(
 @router.get("/channels/{channel_id}/delete", response_class=HTMLResponse, name="channel_delete")
 def channel_delete_confirm(request: Request, session: SessionDep, channel_id: int):
     """Ask first, and say how much history goes with the channel."""
-    channel = _channel_or_404(session, channel_id)
+    channel = _channel_or_404(session, channel_id, language_in_force(request))
     return templates.TemplateResponse(
         request,
         "channels/delete.html",
@@ -569,6 +588,6 @@ def channel_delete_confirm(request: Request, session: SessionDep, channel_id: in
 @router.post("/channels/{channel_id}/delete", name="channel_destroy")
 def channel_destroy(request: Request, session: SessionDep, channel_id: int):
     """Delete the channel with its history and its pictures."""
-    _channel_or_404(session, channel_id)
+    _channel_or_404(session, channel_id, language_in_force(request))
     channels.delete_channel(session, channel_id)
     return _see_other(request, "channel_list")

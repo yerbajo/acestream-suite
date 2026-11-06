@@ -91,6 +91,7 @@ been renamed yet keeps working (the new name wins when both are set).
 | `ACESTREAM_SUITE_ALLOWED_HOSTS` | empty | Comma-separated `host` / `host:port` values accepted in the `Host` header and in the `Origin` of a write. Without the address you browse by, every request is a `400` and every write a `403`. |
 | `ACESTREAM_SUITE_PLAYBACK_MODE` | `vlc` | `vlc` starts the stream and opens a local player (the desktop behaviour). `url` starts the stream and hands the link to the page — the mode a container needs, since it has no player. |
 | `ACESTREAM_SUITE_STREAM_PARAM` | `id` | Query parameter that starts a stream on the engine: `id` for the Windows 3.1.x build, `infohash` for the Linux 3.2.x build (which answers `failed to load content` to `id`). |
+| `ACESTREAM_SUITE_LANGUAGE` | `es` | Language of the interface: `es`, `en`, `fr`, `it`, `de`, `ru`, `zh`, `ja`. The settings page can change it, and a saved value wins. |
 | `ACESTREAM_SUITE_CHECK_CONCURRENCY` | `2` | Availability checks at once. Each one is a live engine session, so this is also the load on the engine. |
 | `ACESTREAM_SUITE_SCREENSHOT_TIMEOUT` | `30` | Seconds allowed for the ffmpeg frame capture. |
 | `ACESTREAM_SUITE_FFMPEG_PATH` | empty = `ffmpeg` on `PATH` | The binary used for screenshots. |

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% from "_icons.html" import copy_button, icon %}
+{% from "_icons.html" import copy_button, icon with context %}
 {% from "channels/_macros.html" import play_form, status_pill with context %}
 
-{% block title %}Canales · acestream-suite{% endblock %}
+{% block title %}{{ t("Canales") }} · acestream-suite{% endblock %}
 
 {# One column head. The arrow and `aria-sort` only exist on the column in charge of the order. #}
 {% macro sort_header(key, label, extra_class="") -%}
@@ -21,54 +21,54 @@
   <td class="title">
     <div class="title-main">
       {% if row.screenshot_url %}
-      <img class="thumb-mini" src="{{ row.screenshot_url }}" alt="Captura de {{ channel.title }}" width="64" height="36" loading="lazy">
+      <img class="thumb-mini" src="{{ row.screenshot_url }}" alt="{{ t('Captura de {title}').format(title=channel.title) }}" width="64" height="36" loading="lazy">
       {% else %}
-      <span class="no-thumb" aria-label="Sin captura"></span>
+      <span class="no-thumb" aria-label="{{ t('Sin captura') }}"></span>
       {% endif %}
-      <a href="{{ url_for('channel_detail', channel_id=channel.id) }}"{% if channel.title_pending %} class="pending-title" title="Nombre provisional: se completa con el del stream al verificar"{% endif %}>{{ channel.title }}</a>
+      <a href="{{ url_for('channel_detail', channel_id=channel.id) }}"{% if channel.title_pending %} class="pending-title" title="{{ t('Nombre provisional: se completa con el del stream al verificar') }}"{% endif %}>{{ channel.title }}</a>
     </div>
   </td>
   <td class="guide-cell">
     {# Only what is on right now, and since when. What comes next is one click away in the grid, and
        the guide's own channel name is not repeated: this row is already that channel's entry. #}
     {% if row.now_next and row.now_next.current %}
-    <a class="guide-now" href="{{ url_for('channel_guide', channel_id=channel.id) }}" title="Ver la guía de {{ channel.title }}" aria-label="Ver la guía de {{ channel.title }}: {{ row.now_next.current.title }}">{{ row.now_next.current.title }}</a>
+    <a class="guide-now" href="{{ url_for('channel_guide', channel_id=channel.id) }}" title="{{ t('Ver la guía de {title}').format(title=channel.title) }}" aria-label="{{ t('Ver la guía de {title}: {programme}').format(title=channel.title, programme=row.now_next.current.title) }}">{{ row.now_next.current.title }}</a>
     <span class="hint">{{ guide_time_range(row.now_next.current) }}</span>
     {% elif not channel.guide_channel %}
     {# Two blanks, two states, and this link is what tells them apart: a channel that has a guide and
        nothing on right now stays empty on purpose. #}
-    <a class="guide-none hint" href="{{ url_for('epg_mapping') }}" title="Asignar una guía a {{ channel.title }}" aria-label="Asignar una guía a {{ channel.title }}">Sin guía · Asignar</a>
+    <a class="guide-none hint" href="{{ url_for('epg_mapping') }}" title="{{ t('Asignar una guía a {title}').format(title=channel.title) }}" aria-label="{{ t('Asignar una guía a {title}').format(title=channel.title) }}">{{ t("Sin guía") }} · {{ t("Asignar") }}</a>
     {% endif %}
   </td>
-  <td class="hash"><code title="{{ channel.content_id }}">{{ channel.content_id | short_hash }}</code>{{ copy_button(channel.content_id, "Copiar el hash de " ~ channel.title) }}</td>
+  <td class="hash"><code title="{{ channel.content_id }}">{{ channel.content_id | short_hash }}</code>{{ copy_button(channel.content_id, t("Copiar el hash de {title}").format(title=channel.title)) }}</td>
   <td>{{ channel.category.name if channel.category else "—" }}</td>
   <td class="lang-country">
     {% if channel.language %}<abbr title="{{ language_name(channel.language) }}">{{ channel.language }}</abbr>{% else %}—{% endif %}
     /
     {% if channel.country %}<abbr title="{{ country_name(channel.country) }}">{{ channel.country }}</abbr>{% else %}—{% endif %}
   </td>
-  <td>{% if channel.resolution %}<span class="resolution">{{ resolution_labels[channel.resolution] }}</span>{% else %}—{% endif %}</td>
+  <td>{% if channel.resolution %}<span class="resolution">{{ t(resolution_labels[channel.resolution]) }}</span>{% else %}—{% endif %}</td>
   <td class="status-cell">
     {{ status_pill(check, with_reason=true) }}
     {# Checks this one channel and comes back to this very list. #}
     <form class="inline" method="post" action="{{ url_for('channel_check', channel_id=channel.id) }}" hx-disabled-elt="find button">
       <input type="hidden" name="next" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
-      <button type="submit" class="icon-button recheck-button" aria-label="Verificar {{ channel.title }}" title="Verificar este canal">{{ icon("recheck") }}</button>
+      <button type="submit" class="icon-button recheck-button" aria-label="{{ t('Verificar {title}').format(title=channel.title) }}" title="{{ t('Verificar este canal') }}">{{ icon("recheck") }}</button>
     </form>
   </td>
   <td class="num">{{ check.peers if check and check.peers is not none else "—" }}</td>
   <td>
-    {% if check %}<time datetime="{{ check.checked_at.isoformat() }}" title="{{ check.checked_at | localtime }}">{{ check.checked_at | ago }}</time>{% else %}Nunca{% endif %}
+    {% if check %}<time datetime="{{ check.checked_at.isoformat() }}" title="{{ check.checked_at | localtime }}">{{ check.checked_at | ago }}</time>{% else %}{{ t("Nunca") }}{% endif %}
   </td>
   <td>
     <time datetime="{{ channel.created_at.isoformat() }}" title="{{ channel.created_at | localtime }}">{{ channel.created_at | ago }}</time>
   </td>
   <td class="row-actions">
     {% call play_form(channel) %}
-    <button type="submit" class="icon-button" aria-label="Reproducir {{ channel.title }}" title="Reproducir">{{ icon("play") }}</button>
+    <button type="submit" class="icon-button" aria-label="{{ t('Reproducir {title}').format(title=channel.title) }}" title="{{ t('Reproducir') }}">{{ icon("play") }}</button>
     {% endcall %}
-    <a class="icon-button" href="{{ url_for('channel_edit', channel_id=channel.id) }}" aria-label="Editar {{ channel.title }}" title="Editar">{{ icon("edit") }}</a>
-    <a class="icon-button danger" href="{{ url_for('channel_delete', channel_id=channel.id) }}" aria-label="Borrar {{ channel.title }}" title="Borrar">{{ icon("delete") }}</a>
+    <a class="icon-button" href="{{ url_for('channel_edit', channel_id=channel.id) }}" aria-label="{{ t('Editar {title}').format(title=channel.title) }}" title="{{ t('Editar') }}">{{ icon("edit") }}</a>
+    <a class="icon-button danger" href="{{ url_for('channel_delete', channel_id=channel.id) }}" aria-label="{{ t('Borrar {title}').format(title=channel.title) }}" title="{{ t('Borrar') }}">{{ icon("delete") }}</a>
   </td>
 </tr>
 {%- endmacro %}
@@ -83,19 +83,19 @@
   <table class="channels">
     <thead>
       <tr>
-        {{ sort_header("title", "Título") }}
-        <th scope="col">Guía</th>
-        <th scope="col">Hash</th>
-        <th scope="col">Categoría</th>
-        <th scope="col">Idioma/País</th>
-        <th scope="col">Res.</th>
-        {{ sort_header("status", "Estado") }}
-        {{ sort_header("peers", "Peers", "num") }}
-        {{ sort_header("checked", "Verificado") }}
+        {{ sort_header("title", t("Título")) }}
+        <th scope="col">{{ t("Guía") }}</th>
+        <th scope="col">{{ t("Hash") }}</th>
+        <th scope="col">{{ t("Categoría") }}</th>
+        <th scope="col">{{ t("Idioma/País") }}</th>
+        <th scope="col">{{ t("Res.") }}</th>
+        {{ sort_header("status", t("Estado")) }}
+        {{ sort_header("peers", t("Peers"), "num") }}
+        {{ sort_header("checked", t("Verificado")) }}
         {# `updated_at` stays out: it only moves when a row is edited, so on nearly every channel it
            reads the same as `created_at` and does not earn a column. #}
-        {{ sort_header("created", "Añadido") }}
-        <th scope="col"><span class="visually-hidden">Acciones</span></th>
+        {{ sort_header("created", t("Añadido")) }}
+        <th scope="col"><span class="visually-hidden">{{ t("Acciones") }}</span></th>
       </tr>
     </thead>
     <tbody>
@@ -107,8 +107,8 @@
 </div>
 {% else %}
 <section class="empty-state">
-  <p class="empty-title">Ningún canal coincide con estos filtros.</p>
-  <p><a href="{{ url_for('channel_list') }}">Quitar filtros</a></p>
+  <p class="empty-title">{{ t("Ningún canal coincide con estos filtros.") }}</p>
+  <p><a href="{{ url_for('channel_list') }}">{{ t("Quitar filtros") }}</a></p>
 </section>
 {% endif %}
 {% endif %}

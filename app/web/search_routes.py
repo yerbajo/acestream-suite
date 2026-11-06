@@ -20,6 +20,7 @@ from app.acestream.content_id import InvalidContentIdError
 from app.acestream.errors import ContentNotFoundError, EngineError, EngineUnavailableError
 from app.config import PLAYBACK_MODE
 from app.db.models import Category, Channel
+from app.i18n import translate
 from app.services import categories, checks, importer, player, verification
 from app.services.catalog import Screenshots
 from app.services.errors import ServiceError, ValidationError
@@ -36,7 +37,7 @@ from app.web.deps import (
     SettingsDep,
 )
 from app.web.forms import resolve_category
-from app.web.templating import templates
+from app.web.templating import language_in_force, templates
 
 router = APIRouter(prefix="/search")
 
@@ -108,13 +109,15 @@ def _catalogue_measurements(session, content_ids: list[str]) -> dict[str, object
     }
 
 
-def _ask_index(settings, query: str, limit: int) -> tuple[list, str | None]:
+def _ask_index(settings, query: str, limit: int, language: str) -> tuple[list, str | None]:
     """The hits for this query, or the sentence that replaces them when the index did not answer."""
     try:
-        with SearchClient(settings.resolved_search_url, timeout=settings.engine_timeout) as client:
+        with SearchClient(
+            settings.resolved_search_url, timeout=settings.engine_timeout, language=language
+        ) as client:
             return client.search(query, limit=limit), None
     except SearchError as exc:
-        return [], f"No se pudo buscar: {exc}"
+        return [], translate("No se pudo buscar: {detail}", language).format(detail=exc)
 
 
 @router.get("", response_class=HTMLResponse, name="search_page")
@@ -134,7 +137,7 @@ def search_page(
     values = {"limit": limit}
     if not query:
         return _page(request, session, values=values)
-    hits, problem = _ask_index(settings, query, limit)
+    hits, problem = _ask_index(settings, query, limit, language_in_force(request))
     if problem:
         return _page(request, session, query=query, problem=problem, values=values)
     known = _catalogue_measurements(session, [hit.content_id for hit in hits])
@@ -155,7 +158,9 @@ def _picked_lines(picks: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _category_pick(session, category_id: str, new_category: str) -> tuple[int | None, str | None]:
+def _category_pick(
+    session, category_id: str, new_category: str, language: str
+) -> tuple[int | None, str | None]:
     """The category to store, and the complaint when the posted one names no category.
 
     A name typed by hand wins over the list, exactly as on the channel form: it is the more specific
@@ -166,17 +171,17 @@ def _category_pick(session, category_id: str, new_category: str) -> tuple[int | 
         return None, None
     posted = int(category_id) if category_id.isdigit() else None
     unknown = category_id and (posted is None or session.get(Category, posted) is None)
-    return posted, "La categoría elegida no existe." if unknown else None
+    return posted, (translate("La categoría elegida no existe.", language) if unknown else None)
 
 
-def _code_problems(values: dict[str, str]) -> dict[str, str]:
+def _code_problems(values: dict[str, str], language: str) -> dict[str, str]:
     """The language and country fields that are not codes the catalogue knows."""
     problems = {}
     for field, normalize in _CODE_FIELDS:
         try:
             normalize(values[field])
         except ValidationError:
-            problems[field] = "Código desconocido."
+            problems[field] = translate("Código desconocido.", language)
     return problems
 
 
@@ -227,11 +232,12 @@ def search_add(
         "country": country,
     }
     text = _picked_lines(pick or [])
-    chosen, category_problem = _category_pick(session, category_id, new_category)
-    problems = {} if text else {"pick": "Marca al menos un resultado."}
+    page_language = language_in_force(request)
+    chosen, category_problem = _category_pick(session, category_id, new_category, page_language)
+    problems = {} if text else {"pick": translate("Marca al menos un resultado.", page_language)}
     if category_problem:
         problems["category_id"] = category_problem
-    problems |= _code_problems(values)
+    problems |= _code_problems(values, page_language)
     if problems:
         return _page(request, session, query=query, errors=problems, values=values)
 
@@ -244,7 +250,14 @@ def search_add(
             country=country,
         )
     except ServiceError as exc:
-        return _page(request, session, query=query, errors={"pick": f"No se pudo añadir: {exc}"})
+        return _page(
+            request,
+            session,
+            query=query,
+            errors={
+                "pick": translate("No se pudo añadir: {detail}", page_language).format(detail=exc)
+            },
+        )
 
     created = [channel.id for channel in result.created]
     reachable = _queue_first_checks(
@@ -267,12 +280,15 @@ def search_peers(
     """
     result = None
     error = None
+    language = language_in_force(request)
     try:
         result = verification.verify(client, content_id, settings.verification())
     except InvalidContentIdError:
-        error = "Ese Content ID no es válido."
+        error = translate("Ese Content ID no es válido.", language)
     except EngineUnavailableError:
-        error = f"El engine de Ace Stream no responde en {settings.engine_url}."
+        error = translate("El engine de Ace Stream no responde en {url}.", language).format(
+            url=settings.engine_url
+        )
     return templates.TemplateResponse(
         request,
         "_search_peers.html",
@@ -281,7 +297,7 @@ def search_peers(
     )
 
 
-def _start_playback(client, settings, content_id: str, name: str):
+def _start_playback(client, settings, content_id: str, name: str, language: str):
     """Start that link in whatever plays it, with the sentence to show when it does not.
 
     A missing VLC, a dead link and an engine that is not there are three different fixes for the
@@ -292,16 +308,19 @@ def _start_playback(client, settings, content_id: str, name: str):
             client, content_id, title=name or None, vlc_path=settings.vlc_path
         )
     except player.VlcNotFoundError:
-        return None, "No se encontró VLC. Instálalo o indica la ruta de vlc.exe en Ajustes."
-    except ContentNotFoundError:
-        return None, "El engine no pudo cargar este Content ID: puede que el enlace haya muerto."
-    except EngineError:
-        return None, (
-            f"El engine de Ace Stream no responde en {settings.engine_url}. "
-            "¿Está abierto Ace Stream?"
+        return None, translate(
+            "No se encontró VLC. Instálalo o indica la ruta de vlc.exe en Ajustes.", language
         )
+    except ContentNotFoundError:
+        return None, translate(
+            "El engine no pudo cargar este Content ID: puede que el enlace haya muerto.", language
+        )
+    except EngineError:
+        return None, translate(
+            "El engine de Ace Stream no responde en {url}. ¿Está abierto Ace Stream?", language
+        ).format(url=settings.engine_url)
     except player.PlayerError as exc:
-        return None, f"No se pudo abrir VLC: {exc}"
+        return None, translate("No se pudo abrir VLC: {detail}", language).format(detail=exc)
     return stream, None
 
 
@@ -318,7 +337,7 @@ def search_play(
     This is the only test that really answers the question: the index may well list a link that is
     dead, and opening a session is what tells the two apart.
     """
-    stream, error = _start_playback(client, settings, content_id, name)
+    stream, error = _start_playback(client, settings, content_id, name, language_in_force(request))
     return templates.TemplateResponse(
         request,
         "_search_play.html",

@@ -20,7 +20,8 @@ from app.acestream import install
 from app.acestream.client import EngineVersion
 from app.services.settings import AppSettings
 from app.web.deps import EngineProbe, EngineProbeDep, SettingsDep
-from app.web.templating import templates
+from app.i18n import translate
+from app.web.templating import language_in_force, templates
 
 router = APIRouter(prefix="/engine")
 
@@ -79,15 +80,19 @@ def _wait_for_answer(probe: EngineProbe) -> EngineVersion | None:
         time.sleep(POLL_INTERVAL)
 
 
-def _launch(probe: EngineProbe, executable: str) -> tuple[EngineVersion | None, str | None]:
+def _launch(
+    probe: EngineProbe, executable: str, language: str
+) -> tuple[EngineVersion | None, str | None]:
     """Start it and wait for it to answer, or say which of the two things went wrong."""
     try:
         install.start_engine(executable)
     except install.EngineStartError as exc:
-        return None, f"No se pudo iniciar: {exc}"
+        return None, translate("No se pudo iniciar: {detail}", language).replace("{detail}", str(exc))
     version = _wait_for_answer(probe)
     if version is None:
-        return None, f"Ace Stream no respondió en {START_TIMEOUT:g} s."
+        return None, translate("Ace Stream no respondió en {seconds} s.", language).replace(
+            "{seconds}", f"{START_TIMEOUT:g}"
+        )
     return version, None
 
 
@@ -100,5 +105,5 @@ def engine_start(request: Request, probe: EngineProbeDep, settings: SettingsDep)
     executable = engine_executable(settings)
     if executable is None:
         return _indicator(request, settings, None, error=_NO_EXECUTABLE)
-    version, error = _launch(probe, executable)
+    version, error = _launch(probe, executable, language_in_force(request))
     return _indicator(request, settings, version, error=error)

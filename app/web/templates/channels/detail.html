@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_icons.html" import copy_button %}
+{% from "_icons.html" import copy_button with context %}
 {% from "channels/_macros.html" import play_form, status_pill with context %}
 
 {% block title %}{{ channel.title }} · acestream-suite{% endblock %}
@@ -12,71 +12,71 @@
 {%- endmacro %}
 
 {% block content %}
-<p class="breadcrumb"><a href="{{ url_for('channel_list') }}">← Canales</a></p>
+<p class="breadcrumb"><a href="{{ url_for('channel_list') }}">← {{ t("Canales") }}</a></p>
 
 <div class="page-head">
   <h1>{{ channel.title }}</h1>
   <div class="actions">
     <form method="post" action="{{ url_for('channel_check', channel_id=channel.id) }}"
           hx-disabled-elt="find button">
-      <button type="submit" class="button primary">Verificar de nuevo</button>
-      <span class="busy" aria-live="polite">Verificando…</span>
+      <button type="submit" class="button primary">{{ t("Verificar de nuevo") }}</button>
+      <span class="busy" aria-live="polite">{{ t("Verificando…") }}</span>
     </form>
     <form method="post" action="{{ url_for('channel_screenshot', channel_id=channel.id) }}"
-          hx-confirm="Se verifica el canal y, si está activo, se saca una captura nueva. Tarda unos segundos más que una verificación normal. ¿Continuar?">
-      <button type="submit" class="button">Nueva captura</button>
+          hx-confirm="{{ t('Se verifica el canal y, si está activo, se saca una captura nueva. Tarda unos segundos más que una verificación normal. ¿Continuar?') }}">
+      <button type="submit" class="button">{{ t("Nueva captura") }}</button>
     </form>
     {% call play_form(channel) %}
-    <button type="submit" class="button">Abrir en reproductor</button>
+    <button type="submit" class="button">{{ t("Abrir en reproductor") }}</button>
     {% endcall %}
-    <a class="button" href="{{ url_for('channel_guide', channel_id=channel.id) }}">Ver guía</a>
-    <a class="button" href="{{ url_for('channel_edit', channel_id=channel.id) }}">Editar</a>
-    <a class="button danger-outline" href="{{ url_for('channel_delete', channel_id=channel.id) }}">Borrar</a>
+    <a class="button" href="{{ url_for('channel_guide', channel_id=channel.id) }}">{{ t("Ver guía") }}</a>
+    <a class="button" href="{{ url_for('channel_edit', channel_id=channel.id) }}">{{ t("Editar") }}</a>
+    <a class="button danger-outline" href="{{ url_for('channel_delete', channel_id=channel.id) }}">{{ t("Borrar") }}</a>
   </div>
 </div>
 
 <div class="detail">
   <figure class="capture">
     {% if last_capture %}
-    <img src="{{ last_capture.screenshot_url }}" alt="Última captura de {{ channel.title }}">
-    <figcaption>Captura del {{ last_capture.check.checked_at | localtime }}</figcaption>
+    <img src="{{ last_capture.screenshot_url }}" alt="{{ t('Última captura de {title}').format(title=channel.title) }}">
+    <figcaption>{{ t("Captura del {when}").format(when=last_capture.check.checked_at | localtime) }}</figcaption>
     {% else %}
-    <div class="no-capture">Sin capturas todavía</div>
+    <div class="no-capture">{{ t("Sin capturas todavía") }}</div>
     {% endif %}
   </figure>
 
   {# Everything known about the channel, latest check first, in the order it is asked for. #}
   <dl class="facts">
-    {% call fact("Estado") %}
+    {% call fact(t("Estado")) %}
     {{ status_pill(latest) }}
     {% if latest and latest.error_message %}<span class="hint">{{ latest.error_message }}</span>{% endif %}
     {% endcall %}
-    {% call fact("Peers") %}{{ latest.peers if latest and latest.peers is not none else "—" }}{% endcall %}
-    {% call fact("Última verificación") %}{% if latest %}<time datetime="{{ latest.checked_at.isoformat() }}">{{ latest.checked_at | localtime }}</time>{% else %}Nunca{% endif %}{% endcall %}
-    {% call fact("Content ID") %}<code class="wrap">{{ channel.content_id }}</code>{{ copy_button(channel.content_id, "Copiar el hash") }}{% endcall %}
-    {% call fact("Enlace") %}<code class="wrap">acestream://{{ channel.content_id }}</code>{% endcall %}
-    {% call fact("Categoría") %}{{ channel.category.name if channel.category else "—" }}{% endcall %}
-    {% call fact("Idioma") %}{% if channel.language %}{{ language_name(channel.language) }} ({{ channel.language }}){% else %}—{% endif %}{% endcall %}
-    {% call fact("País") %}{% if channel.country %}{{ country_name(channel.country) }} ({{ channel.country }}){% else %}—{% endif %}{% endcall %}
-    {% call fact("Resolución") %}{{ resolution_labels[channel.resolution] if channel.resolution else "Sin detectar" }}{% endcall %}
-    {% call fact("Alta") %}<time datetime="{{ channel.created_at.isoformat() }}">{{ channel.created_at | localtime }}</time>{% endcall %}
+    {% call fact(t("Peers")) %}{{ latest.peers if latest and latest.peers is not none else "—" }}{% endcall %}
+    {% call fact(t("Última verificación")) %}{% if latest %}<time datetime="{{ latest.checked_at.isoformat() }}">{{ latest.checked_at | localtime }}</time>{% else %}{{ t("Nunca") }}{% endif %}{% endcall %}
+    {% call fact(t("Content ID")) %}<code class="wrap">{{ channel.content_id }}</code>{{ copy_button(channel.content_id, t("Copiar el hash")) }}{% endcall %}
+    {% call fact(t("Enlace")) %}<code class="wrap">acestream://{{ channel.content_id }}</code>{% endcall %}
+    {% call fact(t("Categoría")) %}{{ channel.category.name if channel.category else "—" }}{% endcall %}
+    {% call fact(t("Idioma")) %}{% if channel.language %}{{ language_name(channel.language) }} ({{ channel.language }}){% else %}—{% endif %}{% endcall %}
+    {% call fact(t("País")) %}{% if channel.country %}{{ country_name(channel.country) }} ({{ channel.country }}){% else %}—{% endif %}{% endcall %}
+    {% call fact(t("Resolución")) %}{{ resolution_labels[channel.resolution] if channel.resolution else t("Sin detectar") }}{% endcall %}
+    {% call fact(t("Alta")) %}<time datetime="{{ channel.created_at.isoformat() }}">{{ channel.created_at | localtime }}</time>{% endcall %}
   </dl>
 </div>
 
-<h2>Historial de verificaciones</h2>
+<h2>{{ t("Historial de verificaciones") }}</h2>
 {% if history %}
 <div class="table-wrap">
   <table class="channels history">
     <thead>
       <tr>
-        <th scope="col">Fecha</th>
-        <th scope="col">Estado</th>
-        <th scope="col" class="num">Peers</th>
-        <th scope="col" class="num">Velocidad</th>
-        <th scope="col">Tamaño</th>
-        <th scope="col">Infohash</th>
-        <th scope="col">Captura</th>
-        <th scope="col">Detalle</th>
+        <th scope="col">{{ t("Fecha") }}</th>
+        <th scope="col">{{ t("Estado") }}</th>
+        <th scope="col" class="num">{{ t("Peers") }}</th>
+        <th scope="col" class="num">{{ t("Velocidad") }}</th>
+        <th scope="col">{{ t("Tamaño") }}</th>
+        <th scope="col">{{ t("Infohash") }}</th>
+        <th scope="col">{{ t("Captura") }}</th>
+        <th scope="col">{{ t("Detalle") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -86,12 +86,12 @@
         <td><time datetime="{{ check.checked_at.isoformat() }}">{{ check.checked_at | localtime }}</time></td>
         <td>{{ status_pill(check) }}</td>
         <td class="num">{{ check.peers if check.peers is not none else "—" }}</td>
-        <td class="num" title="Valor informado por el engine">{{ check.speed_down if check.speed_down is not none else "—" }}</td>
+        <td class="num" title="{{ t('Valor informado por el engine') }}">{{ check.speed_down if check.speed_down is not none else "—" }}</td>
         <td>{% if check.width and check.height %}{{ check.width }}×{{ check.height }}{% else %}—{% endif %}</td>
         <td>{% if check.infohash %}<code title="{{ check.infohash }}">{{ check.infohash | short_hash }}</code>{% else %}—{% endif %}</td>
         <td class="thumb">
           {% if row.screenshot_url %}
-          <a href="{{ row.screenshot_url }}" target="_blank" rel="noopener"><img src="{{ row.screenshot_url }}" alt="Captura del {{ check.checked_at | localtime }}" width="96" height="54" loading="lazy"></a>
+          <a href="{{ row.screenshot_url }}" target="_blank" rel="noopener"><img src="{{ row.screenshot_url }}" alt="{{ t('Captura del {when}').format(when=check.checked_at | localtime) }}" width="96" height="54" loading="lazy"></a>
           {% else %}—{% endif %}
         </td>
         <td class="message">{{ check.error_message or "" }}</td>
@@ -102,8 +102,8 @@
 </div>
 {% else %}
 <section class="empty-state">
-  <p class="empty-title">Este canal todavía no se ha verificado.</p>
-  <p>Usa «Verificar de nuevo» para comprobar si tiene peers.</p>
+  <p class="empty-title">{{ t("Este canal todavía no se ha verificado.") }}</p>
+  <p>{{ t("Usa «Verificar de nuevo» para comprobar si tiene peers.") }}</p>
 </section>
 {% endif %}
 {% endblock %}

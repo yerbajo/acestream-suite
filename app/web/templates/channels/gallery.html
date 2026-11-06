@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon %}
+{% from "_icons.html" import icon with context %}
 {% from "channels/_macros.html" import play_form with context %}
 
-{% block title %}Galería · acestream-suite{% endblock %}
+{% block title %}{{ t("Galería") }} · acestream-suite{% endblock %}
 
 {# One tile: the artwork, its state, a play button that appears on hover, the title and the tags a
    viewer scans first. Nothing here is a table cell, so the same channel reads as a poster. #}
@@ -19,19 +19,19 @@
       {% endif %}
     </a>
     {% if check %}
-    <span class="tile-status status-{{ check.status.value }}" title="{{ status_labels[check.status] }}">{{ status_labels[check.status] }}</span>
+    <span class="tile-status status-{{ check.status.value }}" title="{{ t(status_labels[check.status]) }}">{{ t(status_labels[check.status]) }}</span>
     {% else %}
-    <span class="tile-status status-unchecked" title="Sin verificar">Sin verificar</span>
+    <span class="tile-status status-unchecked" title="{{ t('Sin verificar') }}">{{ t("Sin verificar") }}</span>
     {% endif %}
     {% call play_form(channel, "tile-play") %}
-    <button type="submit" class="play-button" aria-label="Reproducir {{ channel.title }}" title="Reproducir">{{ icon("play") }}</button>
+    <button type="submit" class="play-button" aria-label="{{ t('Reproducir {title}').format(title=channel.title) }}" title="{{ t('Reproducir') }}">{{ icon("play") }}</button>
     {% endcall %}
   </div>
   <h3 class="tile-title{% if channel.title_pending %} pending-title{% endif %}">
     <a href="{{ url_for('channel_detail', channel_id=channel.id) }}">{{ channel.title }}</a>
   </h3>
-  <ul class="tags" role="list" aria-label="Etiquetas">
-    {% if channel.resolution %}<li class="tag tag-resolution">{{ resolution_labels[channel.resolution] }}</li>{% endif %}
+  <ul class="tags" role="list" aria-label="{{ t('Etiquetas') }}">
+    {% if channel.resolution %}<li class="tag tag-resolution">{{ t(resolution_labels[channel.resolution]) }}</li>{% endif %}
     {% if channel.category %}<li class="tag">{{ channel.category.name }}</li>{% endif %}
     {% if channel.language %}<li class="tag" title="{{ language_name(channel.language) }}">{{ channel.language | upper }}</li>{% endif %}
     {% if channel.country %}<li class="tag" title="{{ country_name(channel.country) }}">{{ channel.country }}</li>{% endif %}
@@ -57,8 +57,8 @@
 {% endfor %}
 {% else %}
 <section class="empty-state">
-  <p class="empty-title">Ningún canal coincide con estos filtros.</p>
-  <p><a href="{{ url_for('channel_gallery') }}">Quitar filtros</a></p>
+  <p class="empty-title">{{ t("Ningún canal coincide con estos filtros.") }}</p>
+  <p><a href="{{ url_for('channel_gallery') }}">{{ t("Quitar filtros") }}</a></p>
 </section>
 {% endif %}
 {% endif %}

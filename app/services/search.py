@@ -24,6 +24,7 @@ from typing import Any
 import httpx
 
 from app.acestream.content_id import InvalidContentIdError, parse_content_id
+from app.i18n import resolve, translate
 
 # One query is one search on a machine somebody else runs for everybody: long text is not a bigger
 # harvest, it is a slower answer.
@@ -173,9 +174,13 @@ class SearchClient:
     test intercepts the index exactly as it already intercepts the engine.
     """
 
-    def __init__(self, base_url: str, timeout: float = DEFAULT_TIMEOUT):
+    def __init__(
+        self, base_url: str, timeout: float = DEFAULT_TIMEOUT, language: str | None = None
+    ):
         self.base_url = (base_url or "").strip().rstrip("/")
         self.timeout = timeout
+        # The language its refusals are written in: they end up in the page that asked.
+        self.language = language or resolve()
         self._http = httpx.Client(timeout=timeout)
 
     def __enter__(self) -> "SearchClient":
@@ -199,7 +204,7 @@ class SearchClient:
         if not query:
             return []
         if not self.base_url:
-            raise SearchError("no hay URL de búsqueda configurada")
+            raise SearchError(translate("no hay URL de búsqueda configurada", self.language))
         url = search_url(self.base_url, query)
         return parse_hits(self._answer(url), limit)
 
@@ -214,8 +219,16 @@ class SearchClient:
             response = self._http.get(url, headers={"Accept": "application/json"})
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            raise SearchError(f"no responde en {self.base_url}: {exc}") from exc
+            raise SearchError(
+                translate("no responde en {base}: {detail}", self.language).format(
+                    base=self.base_url, detail=exc
+                )
+            ) from exc
         try:
             return response.json()
         except ValueError as exc:
-            raise SearchError(f"{url} no contestó JSON (¿es la URL de la búsqueda?)") from exc
+            raise SearchError(
+                translate(
+                    "{url} no contestó JSON (¿es la URL de la búsqueda?)", self.language
+                ).format(url=url)
+            ) from exc

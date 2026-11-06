@@ -159,13 +159,13 @@ def test_localhost_name_is_accepted(web):
 def test_last_check_is_shown_as_relative_time(age, expected):
     now = datetime(2026, 10, 7, 12, 0, tzinfo=UTC)
 
-    assert _ago(now - age, now) == expected
+    assert _ago(now - age, "es", now) == expected
 
 
 def test_old_checks_show_the_date():
     now = datetime(2026, 10, 7, 12, 0, tzinfo=UTC)
 
-    assert _ago(now - timedelta(days=45), now) == "2026-08-23"
+    assert _ago(now - timedelta(days=45), "es", now) == "2026-08-23"
 
 
 def test_list_has_no_creation_column_but_still_sorts_by_it(web, db):

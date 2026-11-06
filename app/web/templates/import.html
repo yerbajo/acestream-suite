@@ -4,7 +4,7 @@
    status otherwise triggers when the background checks end. #}
 {% set reload_on_checks = false %}
 
-{% block title %}Importar canales · acestream-suite{% endblock %}
+{% block title %}{{ t("Importar canales") }} · acestream-suite{% endblock %}
 
 {% macro error_text(name) -%}
 {%- if errors[name] %}<p class="field-error" id="{{ name }}-error">{{ errors[name] }}</p>{% endif -%}
@@ -33,26 +33,26 @@
 {%- endmacro %}
 
 {% block content %}
-<h1>Importar canales</h1>
+<h1>{{ t("Importar canales") }}</h1>
 
 {% if result %}
 {# A file of links is counted in lines, and a file of channels in channels: the summary says which
    unit it is talking about, and the noun follows its number. #}
-{% set unit = "Línea" if result.unit == "line" else "Canal" %}
+{% set unit = t("Línea") if result.unit == "line" else t("Canal") %}
 <section class="card import-summary" aria-labelledby="summary-title">
-  <h2 id="summary-title">Resultado</h2>
+  <h2 id="summary-title">{{ t("Resultado") }}</h2>
   <p>
-    <strong>{{ result.created | length }}</strong> {{ "canal creado" if result.created | length == 1 else "canales creados" }},
-    <strong>{{ result.duplicates | length }}</strong> {{ "duplicado" if result.duplicates | length == 1 else "duplicados" }} y
-    <strong>{{ result.invalid | length }}</strong> {{ ("línea inválida" if result.invalid | length == 1 else "líneas inválidas") if result.unit == "line" else ("canal inválido" if result.invalid | length == 1 else "canales inválidos") }}.
-    {% if result.created and not engine_down %}Los canales nuevos se están verificando en segundo plano.{% endif %}
+    <strong>{{ result.created | length }}</strong> {{ t("canal creado") if result.created | length == 1 else t("canales creados") }},
+    <strong>{{ result.duplicates | length }}</strong> {{ t("duplicado") if result.duplicates | length == 1 else t("duplicados") }} {{ t("y") }}
+    <strong>{{ result.invalid | length }}</strong> {{ (t("línea inválida") if result.invalid | length == 1 else t("líneas inválidas")) if result.unit == "line" else (t("canal inválido") if result.invalid | length == 1 else t("canales inválidos")) }}.
+    {% if result.created and not engine_down %}{{ t("Los canales nuevos se están verificando en segundo plano.") }}{% endif %}
   </p>
   {% if engine_down %}
-  <p class="notice notice-error" role="alert">Ace Stream no responde: los canales nuevos quedan sin verificar. Ábrelo y usa «Verificar» en el listado.</p>
+  <p class="notice notice-error" role="alert">{{ t("Ace Stream no responde: los canales nuevos quedan sin verificar. Ábrelo y usa «Verificar» en el listado.") }}</p>
   {% endif %}
 
   {% if result.created %}
-  {% call(item) listed("Creados", result.created) %}
+  {% call(item) listed(t("Creados"), result.created) %}
   <a href="{{ url_for('channel_detail', channel_id=item.id) }}">{{ item.title }}</a> <code>{{ item.content_id | short_hash }}</code>
   {% endcall %}
   {% endif %}
@@ -60,74 +60,74 @@
   {% if result.duplicates %}
   {# A duplicate is either something already in the catalogue or a repeat inside the same file; the
      line number and the first line that had it are what let the user find it again. #}
-  {% call(item) listed("Duplicados (no se crearon)", result.duplicates) %}
+  {% call(item) listed(t("Duplicados (no se crearon)"), result.duplicates) %}
   {{ unit }} {{ item.line }}: <code>{{ item.text | short_hash }}</code> —
-  {% if item.reason == "existing" %}ya está en el catálogo como <a href="{{ url_for('channel_detail', channel_id=item.existing.id) }}">{{ item.existing.title }}</a>.
-  {% else %}repite {{ "la línea" if result.unit == "line" else "el canal" }} {{ item.first_line }}.{% endif %}
+  {% if item.reason == "existing" %}{{ t("ya está en el catálogo como") }} <a href="{{ url_for('channel_detail', channel_id=item.existing.id) }}">{{ item.existing.title }}</a>.
+  {% else %}{{ t("repite") }} {{ t("la línea") if result.unit == "line" else t("el canal") }} {{ item.first_line }}.{% endif %}
   {% endcall %}
   {% endif %}
 
   {% if result.invalid %}
-  {% call(item) listed(("Líneas inválidas" if result.unit == "line" else "Canales inválidos") ~ " (no se crearon)", result.invalid) %}
+  {% call(item) listed((t("Líneas inválidas") if result.unit == "line" else t("Canales inválidos")) ~ " " ~ t("(no se crearon)"), result.invalid) %}
   {{ unit }} {{ item.line }}: <code class="wrap">{{ item.text | truncate(120) }}</code> —
-  {% if item.reason == "invalid" %}datos inválidos: {{ item.detail }}.{% else %}no contiene un Content ID ni un enlace <code>acestream://</code>.{% endif %}
+  {% if item.reason == "invalid" %}{{ t("datos inválidos:") }} {{ item.detail }}.{% else %}{{ t("no contiene un Content ID ni un enlace") }} <code>acestream://</code>.{% endif %}
   {% endcall %}
   {% endif %}
 </section>
 {% endif %}
 
-{% if errors %}<p class="form-error" role="alert">Revisa los campos marcados.</p>{% endif %}
+{% if errors %}<p class="form-error" role="alert">{{ t("Revisa los campos marcados.") }}</p>{% endif %}
 
 <form class="card form" method="post" action="{{ url_for('import_run') }}" enctype="multipart/form-data" hx-disabled-elt="find button[type=submit]">
-  {% call field("file", "Archivo") %}
+  {% call field("file", t("Archivo")) %}
   <input id="file" name="file" type="file" accept=".json,.m3u,.m3u8,.txt,application/json,text/plain"{{ invalid_state("file") }}>
   {{ error_text("file") }}
   <p class="hint">
-    Un archivo exportado desde acestream-suite (<code>.json</code>) trae todos los datos de cada canal: título,
-    categoría, idioma, país y resolución. También una lista <code>.m3u</code> o <code>.txt</code>.
-    Si eliges un archivo, se usa en lugar del texto pegado.
+    {{ t("Un archivo exportado desde acestream-suite") }} (<code>.json</code>) {{ t("trae todos los datos de cada canal: título,") }}
+    {{ t("categoría, idioma, país y resolución. También una lista") }} <code>.m3u</code> {{ t("o") }} <code>.txt</code>.
+    {{ t("Si eliges un archivo, se usa en lugar del texto pegado.") }}
   </p>
   {% endcall %}
 
-  {% call field("links", "o pega los enlaces") %}
+  {% call field("links", t("o pega los enlaces")) %}
   <textarea id="links" name="links" rows="10" spellcheck="false"
-            placeholder="acestream://… o un Content ID por línea"{{ invalid_state("links") }}>{{ values.links }}</textarea>
+            placeholder="{{ t('acestream://… o un Content ID por línea') }}"{{ invalid_state("links") }}>{{ values.links }}</textarea>
   {{ error_text("links") }}
   <p class="hint">
-    Uno por línea, como máximo {{ max_lines }} líneas. El texto que acompaña al enlace se usa como título
-    («Partido - acestream://…»). También acepta listas M3U: el título de <code>#EXTINF</code> se aplica al enlace siguiente.
-    Las líneas que empiezan con <code>#</code> se ignoran.
+    {{ t("Uno por línea, como máximo {max} líneas. El texto que acompaña al enlace se usa como título").format(max=max_lines) }}
+    {{ t("(«Partido - acestream://…»). También acepta listas M3U: el título de") }} <code>#EXTINF</code> {{ t("se aplica al enlace siguiente.") }}
+    {{ t("Las líneas que empiezan con") }} <code>#</code> {{ t("se ignoran.") }}
   </p>
   {% endcall %}
 
-  <p class="hint">Para todos los canales importados (opcional; en un archivo de acestream-suite solo completan lo que le falte a cada canal):</p>
+  <p class="hint">{{ t("Para todos los canales importados (opcional; en un archivo de acestream-suite solo completan lo que le falte a cada canal):") }}</p>
   <div class="field-row">
-    {% call field("category_id", "Categoría") %}
+    {% call field("category_id", t("Categoría")) %}
     <select id="category_id" name="category_id"{{ invalid_state("category_id") }}>
-      <option value="">Sin categoría</option>
+      <option value="">{{ t("Sin categoría") }}</option>
       {% for category in categories %}
       <option value="{{ category.id }}"{% if values.category_id == category.id|string %} selected{% endif %}>{{ category.name }}</option>
       {% endfor %}
     </select>
     {{ error_text("category_id") }}
     {% endcall %}
-    {% call field("new_category", "o nueva categoría") %}
+    {% call field("new_category", t("o nueva categoría")) %}
     <input id="new_category" name="new_category" type="text" maxlength="100" value="{{ values.new_category or '' }}">
     {% endcall %}
   </div>
   <div class="field-row">
-    {% call field("language", "Idioma") %}
+    {% call field("language", t("Idioma")) %}
     <select id="language" name="language"{{ invalid_state("language") }}>
-      <option value="">Sin idioma</option>
+      <option value="">{{ t("Sin idioma") }}</option>
       {% for code, name in language_choices() %}
       <option value="{{ code }}"{% if (values.language or '')|lower == code %} selected{% endif %}>{{ name }} ({{ code }})</option>
       {% endfor %}
     </select>
     {{ error_text("language") }}
     {% endcall %}
-    {% call field("country", "País") %}
+    {% call field("country", t("País")) %}
     <select id="country" name="country"{{ invalid_state("country") }}>
-      <option value="">Sin país</option>
+      <option value="">{{ t("Sin país") }}</option>
       {% for code, name in country_choices() %}
       <option value="{{ code }}"{% if (values.country or '')|upper == code %} selected{% endif %}>{{ name }} ({{ code }})</option>
       {% endfor %}
@@ -137,9 +137,9 @@
   </div>
 
   <div class="actions">
-    <button type="submit" class="button primary">Importar</button>
-    <a class="button" href="{{ url_for('channel_list') }}">Cancelar</a>
-    <span class="busy" aria-live="polite">Importando…</span>
+    <button type="submit" class="button primary">{{ t("Importar") }}</button>
+    <a class="button" href="{{ url_for('channel_list') }}">{{ t("Cancelar") }}</a>
+    <span class="busy" aria-live="polite">{{ t("Importando…") }}</span>
   </div>
 </form>
 {% endblock %}

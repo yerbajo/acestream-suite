@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Ajustes · acestream-suite{% endblock %}
+{% block title %}{{ t("Ajustes") }} · acestream-suite{% endblock %}
 
 {% macro error_text(name) -%}
 {%- if form.errors[name] %}<p class="field-error" id="{{ name }}-error">{{ form.errors[name] }}</p>{% endif -%}
@@ -41,11 +41,11 @@
 {% macro path_field(name, label, hint) -%}
 {% call field(name, label) %}
 <input id="{{ name }}" name="{{ name }}" type="text" spellcheck="false" value="{{ form[name] }}"
-       placeholder="{{ detected[name] or 'Sin detectar' }}"{{ invalid_state(name) }}>
+       placeholder="{{ detected[name] or t('Sin detectar') }}"{{ invalid_state(name) }}>
 {{ error_text(name) }}
 <p class="hint">
   {{ hint }}
-  {% if detected[name] %}Detectado: <code class="wrap">{{ detected[name] }}</code>{% else %}No se detectó en las rutas habituales.{% endif %}
+  {% if detected[name] %}{{ t("Detectado:") }} <code class="wrap">{{ detected[name] }}</code>{% else %}{{ t("No se detectó en las rutas habituales.") }}{% endif %}
 </p>
 {% endcall %}
 {%- endmacro %}
@@ -60,56 +60,68 @@
 {%- endmacro %}
 
 {% block content %}
-<h1>Ajustes</h1>
+<h1>{{ t("Ajustes") }}</h1>
 
 {% if notice %}<p class="notice notice-ok" role="status">{{ notice }}</p>{% endif %}
-{% if form.errors %}<p class="form-error" role="alert">Revisa los campos marcados.</p>{% endif %}
+{% if form.errors %}<p class="form-error" role="alert">{{ t("Revisa los campos marcados.") }}</p>{% endif %}
 
 <form class="card form settings" method="post" action="{{ url_for('settings_save') }}"
       hx-disabled-elt="find button">
-  {% call section("Engine de Ace Stream") %}
-  {% call field("engine_url", "URL del engine") %}
+  {% call section(t("Idioma")) %}
+  {% call field("language", t("Idioma de la interfaz")) %}
+  <select id="language" name="language"{{ invalid_state("language") }}>
+    {% for code, name in languages.items() %}
+    <option value="{{ code }}"{% if code == (form.language or language) %} selected{% endif %}>{{ name }}</option>
+    {% endfor %}
+  </select>
+  {{ error_text("language") }}
+  <p class="hint">{{ t("El español es el idioma por defecto. La variable de entorno ACESTREAM_SUITE_LANGUAGE solo se aplica mientras no guardes un idioma aquí.") }}</p>
+  {% endcall %}
+  {% endcall %}
+
+  {% call section(t("Engine de Ace Stream")) %}
+  {% call field("engine_url", t("URL del engine")) %}
   <input id="engine_url" name="engine_url" type="url" required spellcheck="false" value="{{ form.engine_url }}"{{ invalid_state("engine_url") }}>
   {{ error_text("engine_url") }}
-  <p class="hint">Normalmente <code>http://127.0.0.1:6878</code>.</p>
+  <p class="hint">{{ t("Normalmente") }} <code>http://127.0.0.1:6878</code>.</p>
   {% endcall %}
   <div class="field-row">
-    {{ number_field("engine_timeout", "Timeout de cada petición (s)", "Cuánto esperar una respuesta del engine.") }}
+    {{ number_field("engine_timeout", t("Timeout de cada petición (s)"), t("Cuánto esperar una respuesta del engine.")) }}
   </div>
-  {{ probe("settings_test_engine", "Probar conexión") }}
+  {{ probe("settings_test_engine", t("Probar conexión")) }}
   {% endcall %}
 
-  {% call section("Búsqueda (acesearch)") %}
-  {% call field("search_url", "URL de la búsqueda") %}
+  {% call section(t("Búsqueda (acesearch)")) %}
+  {% call field("search_url", t("URL de la búsqueda")) %}
   <input id="search_url" name="search_url" type="url" spellcheck="false" value="{{ form.search_url }}"{{ invalid_state("search_url") }}>
   {{ error_text("search_url") }}
-  <p class="hint">Vacío usa la del engine, que es donde vive el buscador (<code>/search.m3u</code>).</p>
+  <p class="hint">{{ t("Vacío usa la del engine, que es donde vive el buscador") }} (<code>/search.m3u</code>).</p>
   {% endcall %}
-  {{ probe("settings_test_search", "Probar búsqueda") }}
+  {{ probe("settings_test_search", t("Probar búsqueda")) }}
   {% endcall %}
 
-  {% call section("Verificación") %}
+  {% call section(t("Verificación")) %}
   <div class="field-row">
-    {{ number_field("min_peers", "Peers mínimos", "Un canal está activo con al menos estos peers.") }}
-    {{ number_field("check_timeout", "Timeout de verificación (s)", "Tiempo máximo para que un canal empiece a recibir datos.") }}
-    {{ number_field("screenshot_timeout", "Timeout de captura (s)", "Tiempo máximo de ffmpeg para sacar un fotograma.") }}
-    {{ number_field("check_concurrency", "Verificaciones simultáneas", "Canales que se verifican a la vez en segundo plano (1 a 8).") }}
+    {{ number_field("min_peers", t("Peers mínimos"), t("Un canal está activo con al menos estos peers.")) }}
+    {{ number_field("check_timeout", t("Timeout de verificación (s)"), t("Tiempo máximo para que un canal empiece a recibir datos.")) }}
+    {{ number_field("screenshot_timeout", t("Timeout de captura (s)"), t("Tiempo máximo de ffmpeg para sacar un fotograma.")) }}
+    {{ number_field("check_concurrency", t("Verificaciones simultáneas"), t("Canales que se verifican a la vez en segundo plano (1 a 8).")) }}
   </div>
   {% endcall %}
 
-  {% call section("Programas") %}
-  <p class="hint">Deja una ruta vacía para detectarla automáticamente.</p>
-  {{ path_field("vlc_path", "VLC", "Se usa para reproducir los canales.") }}
-  {{ path_field("ffmpeg_path", "ffmpeg", "Se usa para las capturas.") }}
-  {{ path_field("acestream_path", "Engine de Ace Stream", "Se usa en «Iniciar» cuando Ace Stream está apagado.") }}
+  {% call section(t("Programas")) %}
+  <p class="hint">{{ t("Deja una ruta vacía para detectarla automáticamente.") }}</p>
+  {{ path_field("vlc_path", "VLC", t("Se usa para reproducir los canales.")) }}
+  {{ path_field("ffmpeg_path", "ffmpeg", t("Se usa para las capturas.")) }}
+  {{ path_field("acestream_path", t("Engine de Ace Stream"), t("Se usa en «Iniciar» cuando Ace Stream está apagado.")) }}
   <div class="actions">
-    <button type="submit" class="button" formnovalidate formaction="{{ url_for('settings_detect') }}">Autodetectar rutas</button>
+    <button type="submit" class="button" formnovalidate formaction="{{ url_for('settings_detect') }}">{{ t("Autodetectar rutas") }}</button>
   </div>
   {% endcall %}
 
   <div class="actions">
-    <button type="submit" class="button primary">Guardar</button>
-    <span class="busy" aria-live="polite">Procesando…</span>
+    <button type="submit" class="button primary">{{ t("Guardar") }}</button>
+    <span class="busy" aria-live="polite">{{ t("Procesando…") }}</span>
   </div>
 </form>
 {% endblock %}

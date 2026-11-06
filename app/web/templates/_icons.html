@@ -14,7 +14,7 @@
 
 {# Copies `value` to the clipboard (static/app.js); the check icon shows while it confirms. #}
 {% macro copy_button(value, label) -%}
-<button type="button" class="icon-button copy-button" data-copy="{{ value }}" aria-label="{{ label }}" title="Copiar">
+<button type="button" class="icon-button copy-button" data-copy="{{ value }}" aria-label="{{ label }}" title="{{ t('Copiar') }}">
   <span class="when-idle">{{ icon("copy") }}</span><span class="when-copied">{{ icon("check") }}</span>
 </button>
 {%- endmacro %}

@@ -4,8 +4,8 @@
 {# One pill for a channel's state. `check` is its latest check or None, and a check that failed can
    carry its reason as a tooltip where the caller asks for it. #}
 {% macro status_pill(check, with_reason=false) -%}
-{%- if check %}<span class="status status-{{ check.status.value }}"{% if with_reason and check.error_message %} title="{{ check.error_message }}"{% endif %}>{{ status_labels[check.status] }}</span>
-{%- else %}<span class="status status-unchecked">Sin verificar</span>
+{%- if check %}<span class="status status-{{ check.status.value }}"{% if with_reason and check.error_message %} title="{{ check.error_message }}"{% endif %}>{{ t(status_labels[check.status]) }}</span>
+{%- else %}<span class="status status-unchecked">{{ t("Sin verificar") }}</span>
 {%- endif -%}
 {%- endmacro %}
 

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="{{ language }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,12 +17,12 @@
   <script src="{{ static_url(request, 'app.js') }}" defer></script>
 </head>
 {% set main_nav = [
-  ("channel_list", "Canales"),
-  ("channel_gallery", "Galería"),
-  ("epg_mapping", "Guía"),
-  ("import_page", "Importar"),
-  ("search_page", "Buscar"),
-  ("settings", "Ajustes"),
+  ("channel_list", t("Canales")),
+  ("channel_gallery", t("Galería")),
+  ("epg_mapping", t("Guía")),
+  ("import_page", t("Importar")),
+  ("search_page", t("Buscar")),
+  ("settings", t("Ajustes")),
 ] %}
 <body hx-boost="true">
   <header class="topbar">
@@ -43,7 +43,7 @@
     {# Answers that never redraw the page, such as opening a channel in VLC. #}
     <div id="notices" aria-live="polite"></div>
     {% set flashed = flash_message(request) %}
-    {% if flashed %}<p class="notice notice-error" role="alert">{{ flashed }}</p>{% endif %}
+    {% if flashed %}<p class="notice notice-error" role="alert">{{ t(flashed) }}</p>{% endif %}
     {# The screen reader's channel for whatever the page announces without changing visibly. #}
     <div id="announcer" class="visually-hidden" aria-live="polite"></div>
     {# One poller for the whole page. A page that must not reload when the checks end — the import

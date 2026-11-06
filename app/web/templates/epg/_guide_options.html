@@ -4,5 +4,5 @@
 {% for guide in guides %}
 <option value="{{ guide.id }}">{{ guide.name }}</option>
 {% else %}
-<option value="">Sin coincidencias</option>
+<option value="">{{ t("Sin coincidencias") }}</option>
 {% endfor %}

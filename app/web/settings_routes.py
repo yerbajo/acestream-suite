@@ -17,12 +17,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app.acestream.client import EngineClient
 from app.acestream.errors import EngineError
 from app.acestream.install import find_engine_executable
+from app.i18n import translate
 from app.services import player, screenshots
 from app.services.search import SearchClient, SearchError
 from app.services.settings import save_settings
 from app.web.deps import SessionDep, SettingsDep
 from app.web.forms import SettingsForm
-from app.web.templating import templates
+from app.web.templating import language_in_force, templates
 
 router = APIRouter(prefix="/settings")
 
@@ -52,8 +53,10 @@ def _posted_form(
     vlc_path: FormField = "",
     ffmpeg_path: FormField = "",
     acestream_path: FormField = "",
+    language: FormField = "",
 ) -> SettingsForm:
-    """The ten boxes of the page, turned into the form object the template and the checks share."""
+    """The eleven boxes of the page, turned into the form object the template and the checks
+    share."""
     return SettingsForm(
         engine_url,
         engine_timeout,
@@ -65,6 +68,7 @@ def _posted_form(
         vlc_path,
         ffmpeg_path,
         acestream_path,
+        language,
     )
 
 
@@ -101,14 +105,14 @@ def settings_page(request: Request, settings: SettingsDep, saved: bool = False):
     return _page(
         request,
         SettingsForm.from_settings(settings),
-        notice="Ajustes guardados." if saved else None,
+        notice=translate("Ajustes guardados.", language_in_force(request)) if saved else None,
     )
 
 
 @router.post("", response_class=HTMLResponse, name="settings_save")
 def settings_save(request: Request, session: SessionDep, form: TypedForm):
     """Store the form, or show it again with every complaint about it."""
-    settings = form.validate()
+    settings = form.validate(language=language_in_force(request))
     if settings is None:
         return _page(request, form)
     save_settings(session, settings)
@@ -126,9 +130,12 @@ def settings_detect(request: Request, form: TypedForm):
     for name in filled:
         setattr(form, name, detected[name])
     notice = (
-        "Rutas detectadas. Revisa y pulsa «Guardar» para aplicarlas."
+        translate(
+            "Rutas detectadas. Revisa y pulsa «Guardar» para aplicarlas.",
+            language_in_force(request),
+        )
         if filled
-        else "No se detectaron rutas nuevas."
+        else translate("No se detectaron rutas nuevas.", language_in_force(request))
     )
     response = _page(request, form, notice=notice)
     # Keeps /settings in the address bar: reloading it is a GET, and this page is a POST.
@@ -162,16 +169,20 @@ def settings_test_search(request: Request, form: TypedForm):
     proved nothing here: the thing being configured is the searcher, and the searcher is what this
     asks.
     """
-    form.validate()
+    form.validate(language=language_in_force(request))
     problem = _first_problem(form, _SEARCH_FIELDS)
     base = _search_base(form)
     hits = None
     if problem is None:
         try:
-            with SearchClient(base, timeout=_seconds(form.engine_timeout)) as client:
+            with SearchClient(
+                base, timeout=_seconds(form.engine_timeout), language=language_in_force(request)
+            ) as client:
                 hits = client.search(_PROBE_QUERY, limit=5)
         except SearchError as exc:
-            problem = f"La búsqueda no responde: {exc}"
+            problem = translate(
+                "La búsqueda no responde: {detail}", language_in_force(request)
+            ).format(detail=exc)
     return templates.TemplateResponse(
         request,
         "_search_test.html",
@@ -183,7 +194,7 @@ def settings_test_search(request: Request, form: TypedForm):
 @router.post("/test-engine", response_class=HTMLResponse, name="settings_test_engine")
 def settings_test_engine(request: Request, form: TypedForm):
     """Ask the engine at the typed address for its version, before any of it is saved."""
-    form.validate()
+    form.validate(language=language_in_force(request))
     problem = _first_problem(form, _ENGINE_FIELDS)
     version = None
     if problem is None:
@@ -192,7 +203,9 @@ def settings_test_engine(request: Request, form: TypedForm):
             with EngineClient(url, timeout=_seconds(form.engine_timeout)) as client:
                 version = client.version()
         except EngineError as exc:
-            problem = f"El engine no responde en {url}: {exc}"
+            problem = translate(
+                "El engine no responde en {url}: {detail}", language_in_force(request)
+            ).format(url=url, detail=exc)
     return templates.TemplateResponse(
         request,
         "_engine_test.html",

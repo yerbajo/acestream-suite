@@ -15,6 +15,7 @@ from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse
 
 from app.db.models import Category
+from app.i18n import translate
 from app.services import categories, exchange, importer
 from app.services.catalog import Screenshots
 from app.services.errors import ServiceError, ValidationError
@@ -29,7 +30,7 @@ from app.web.deps import (
     SettingsDep,
 )
 from app.web.forms import resolve_category
-from app.web.templating import templates
+from app.web.templating import language_in_force, templates
 
 router = APIRouter(prefix="/import")
 
@@ -75,20 +76,27 @@ def _posted(
     }
 
 
-def _text_problems(text: str) -> dict[str, str]:
+def _text_problems(text: str, language: str) -> dict[str, str]:
     """What is wrong with the text itself: nothing to import, or more lines than one run takes.
 
     An export is exempt from the line ceiling. It is a document rather than a list, and its length
     counts channels nobody typed.
     """
     if not text.strip():
-        return {"links": "Pega al menos un enlace o Content ID, o elige un archivo."}
+        empty = translate("Pega al menos un enlace o Content ID, o elige un archivo.", language)
+        return {"links": empty}
     if not exchange.is_export(text) and len(text.splitlines()) > importer.MAX_LINES:
-        return {"links": f"Como máximo {importer.MAX_LINES} líneas por importación."}
+        return {
+            "links": translate("Como máximo {max} líneas por importación.", language).format(
+                max=importer.MAX_LINES
+            )
+        }
     return {}
 
 
-def _chosen_category(session, category_id: str, new_category: str) -> tuple[int | None, str | None]:
+def _chosen_category(
+    session, category_id: str, new_category: str, language: str
+) -> tuple[int | None, str | None]:
     """The category the new channels get, and the complaint when the posted one names no row.
 
     A name typed by hand wins, exactly as on the channel form: it is the more specific answer, and
@@ -98,18 +106,18 @@ def _chosen_category(session, category_id: str, new_category: str) -> tuple[int 
         return None, None
     chosen = int(category_id) if category_id.isdigit() else None
     if category_id and (chosen is None or session.get(Category, chosen) is None):
-        return None, "La categoría elegida no existe."
+        return None, translate("La categoría elegida no existe.", language)
     return chosen, None
 
 
-def _code_problems(values: dict[str, str]) -> dict[str, str]:
+def _code_problems(values: dict[str, str], language: str) -> dict[str, str]:
     """The language and country boxes that are not codes the catalogue knows."""
     problems = {}
     for field, normalize in _CODE_FIELDS:
         try:
             normalize(values[field])
         except ValidationError:
-            problems[field] = "Código desconocido."
+            problems[field] = translate("Código desconocido.", language)
     return problems
 
 
@@ -137,17 +145,18 @@ def import_run(
 ):
     """Read what was posted — a pasted list or an uploaded file — and add what it holds."""
     values = _posted(links, category_id, new_category, language, country)
+    page_language = language_in_force(request)
     text = links
     upload_problem = None
     if file is not None and file.filename:
-        text, upload_problem = _uploaded_text(file)
+        text, upload_problem = _uploaded_text(file, page_language)
 
     # A file that could not be read has nothing to judge the text for: the file is the answer.
-    errors = {"file": upload_problem} if upload_problem else _text_problems(text)
-    chosen, category_problem = _chosen_category(session, category_id, new_category)
+    errors = {"file": upload_problem} if upload_problem else _text_problems(text, page_language)
+    chosen, category_problem = _chosen_category(session, category_id, new_category, page_language)
     if category_problem:
         errors["category_id"] = category_problem
-    errors |= _code_problems(values)
+    errors |= _code_problems(values, page_language)
     if errors:
         return _page(request, session, values, errors=errors)
 
@@ -161,7 +170,16 @@ def import_run(
             country=country,
         )
     except ServiceError as exc:
-        return _page(request, session, values, errors={"links": f"No se pudo importar: {exc}"})
+        return _page(
+            request,
+            session,
+            values,
+            errors={
+                "links": translate("No se pudo importar: {detail}", page_language).format(
+                    detail=exc
+                )
+            },
+        )
 
     created = [channel.id for channel in result.created]
     if created and probe() is None:
@@ -180,13 +198,15 @@ def import_run(
     return _page(request, session, {}, result=result)
 
 
-def _uploaded_text(file: UploadFile) -> tuple[str, str | None]:
+def _uploaded_text(file: UploadFile, language: str) -> tuple[str, str | None]:
     """The uploaded file as text, or the sentence that says why it is not one."""
     data = file.file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
-        return "", f"El archivo supera los {MAX_UPLOAD_BYTES // (1024 * 1024)} MB."
+        return "", translate("El archivo supera los {mb} MB.", language).format(
+            mb=MAX_UPLOAD_BYTES // (1024 * 1024)
+        )
     try:
         # A byte-order mark is what Notepad writes; the document is the same without it.
         return data.decode("utf-8-sig"), None
     except UnicodeDecodeError:
-        return "", "El archivo no es texto en UTF-8."
+        return "", translate("El archivo no es texto en UTF-8.", language)

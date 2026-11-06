@@ -93,6 +93,7 @@ que aún no se ha renombrado sigue funcionando (si están las dos, gana la nueva
 | `ACESTREAM_SUITE_ALLOWED_HOSTS` | vacío | Valores `host` / `host:port` separados por comas, aceptados en la cabecera `Host` y en el `Origin` de una escritura. Sin la dirección desde la que navegas, toda petición es un `400` y toda escritura un `403`. |
 | `ACESTREAM_SUITE_PLAYBACK_MODE` | `vlc` | `vlc` arranca el stream y abre un reproductor local (el comportamiento de escritorio). `url` arranca el stream y le pasa el enlace a la página — el modo que necesita un contenedor, que no tiene reproductor. |
 | `ACESTREAM_SUITE_STREAM_PARAM` | `id` | Parámetro de consulta que arranca un stream en el motor: `id` para la build de Windows 3.1.x, `infohash` para la de Linux 3.2.x (que responde `failed to load content` a `id`). |
+| `ACESTREAM_SUITE_LANGUAGE` | `es` | Idioma de la interfaz: `es`, `en`, `fr`, `it`, `de`, `ru`, `zh`, `ja`. Se puede cambiar en la página de ajustes, y un valor guardado manda. |
 | `ACESTREAM_SUITE_CHECK_CONCURRENCY` | `2` | Comprobaciones de disponibilidad a la vez. Cada una es una sesión real en el motor, así que esto es también la carga sobre el motor. |
 | `ACESTREAM_SUITE_SCREENSHOT_TIMEOUT` | `30` | Segundos permitidos para la captura con ffmpeg. |
 | `ACESTREAM_SUITE_FFMPEG_PATH` | vacío = `ffmpeg` en el `PATH` | El binario que se usa para las capturas. |

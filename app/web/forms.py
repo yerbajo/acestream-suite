@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 from sqlalchemy.orm import Session
 
 from app.db.models import Category, Channel
+from app.i18n import LANGUAGES, resolve, translate
 from app.services import categories, channels
 from app.services.catalog import parse_link
 from app.services.errors import ValidationError
@@ -54,6 +55,14 @@ class ChannelForm:
     resolution: str = ""
     errors: dict[str, str] = field(default_factory=dict)
 
+    # The language the sentences below are written in, set by `validate` from the request that
+    # rendered the form: a class attribute, so it stays out of the form's own fields.
+    _language = "es"
+
+    def _t(self, text: str) -> str:
+        """`text` in the language this form is being read in."""
+        return translate(text, self._language)
+
     @classmethod
     def from_channel(cls, channel: Channel) -> "ChannelForm":
         """The form filled with what is stored, so an edit starts from the channel."""
@@ -66,11 +75,15 @@ class ChannelForm:
             resolution=channel.resolution.value if channel.resolution else "",
         )
 
-    def validate(self, session: Session, *, channel_id: int | None = None) -> ChannelData | None:
+    def validate(
+        self, session: Session, *, channel_id: int | None = None, language: str | None = None
+    ) -> ChannelData | None:
         """The accepted values, or None with `errors` filled in.
 
         `channel_id` is the channel being edited: its own Content ID is not a duplicate of itself.
+        `language` is the language the page is read in, so the complaints it shows are in it.
         """
+        self._language = language or resolve()
         self.errors = {}
         data = ChannelData(
             title=self._checked_title(channel_id),
@@ -87,7 +100,7 @@ class ChannelForm:
         """The title as typed; only an edit needs one, a new channel takes the stream's own name."""
         title = self.title.strip()
         if not title and channel_id is not None:
-            self.errors["title"] = "El título es obligatorio."
+            self.errors["title"] = self._t("El título es obligatorio.")
         return title
 
     def _checked_content_id(self, session: Session, channel_id: int | None) -> str:
@@ -95,14 +108,15 @@ class ChannelForm:
         try:
             content_id = parse_link(self.link)
         except ValidationError:
-            self.errors["link"] = (
+            self.errors["link"] = self._t(
                 "No es un Content ID válido: se esperan 40 caracteres hexadecimales "
                 "o un enlace acestream://."
             )
             return ""
         owner = channels.find_channel_by_content_id(session, content_id)
         if owner is not None and owner.id != channel_id:
-            self.errors["link"] = f"Este Content ID ya está registrado como «{owner.title}»."
+            registered = self._t("Este Content ID ya está registrado como «{title}».")
+            self.errors["link"] = registered.format(title=owner.title)
         return content_id
 
     def _checked_category(self, session: Session) -> int | None:
@@ -116,7 +130,7 @@ class ChannelForm:
             return None
         chosen = int(self.category_id) if self.category_id.isdigit() else None
         if chosen is None or session.get(Category, chosen) is None:
-            self.errors["category_id"] = "La categoría elegida no existe."
+            self.errors["category_id"] = self._t("La categoría elegida no existe.")
             return None
         return chosen
 
@@ -124,14 +138,18 @@ class ChannelForm:
         try:
             return normalize_language(self.language)
         except ValidationError:
-            self.errors["language"] = "Idioma desconocido: usa un código ISO 639-1, como «es»."
+            self.errors["language"] = self._t(
+                "Idioma desconocido: usa un código ISO 639-1, como «es»."
+            )
             return None
 
     def _checked_country(self) -> str | None:
         try:
             return normalize_country(self.country)
         except ValidationError:
-            self.errors["country"] = "País desconocido: usa un código ISO 3166-1, como «AR»."
+            self.errors["country"] = self._t(
+                "País desconocido: usa un código ISO 3166-1, como «AR»."
+            )
             return None
 
     def _checked_resolution(self) -> str | None:
@@ -139,7 +157,7 @@ class ChannelForm:
         try:
             chosen = normalize_resolution(self.resolution)
         except ValidationError:
-            self.errors["resolution"] = "Resolución desconocida."
+            self.errors["resolution"] = self._t("Resolución desconocida.")
             return None
         return chosen.value if chosen else None
 
@@ -187,7 +205,16 @@ class SettingsForm:
     vlc_path: str = ""
     ffmpeg_path: str = ""
     acestream_path: str = ""
+    language: str = ""
     errors: dict[str, str] = field(default_factory=dict)
+
+    # The language the sentences below are written in, set by `validate` from the request that
+    # rendered the form: a class attribute, so it stays out of the form's own fields.
+    _language = "es"
+
+    def _t(self, text: str) -> str:
+        """`text` in the language this form is being read in."""
+        return translate(text, self._language)
 
     @classmethod
     def from_settings(cls, settings: AppSettings) -> "SettingsForm":
@@ -203,10 +230,12 @@ class SettingsForm:
             vlc_path=settings.vlc_path or "",
             ffmpeg_path=settings.ffmpeg_path or "",
             acestream_path=settings.acestream_path or "",
+            language=settings.language,
         )
 
-    def validate(self) -> AppSettings | None:
+    def validate(self, *, language: str | None = None) -> AppSettings | None:
         """The settings to store, or None with `errors` filled in."""
+        self._language = language or resolve()
         self.errors = {}
         values: dict[str, object] = {
             "engine_url": self._checked_engine_url(),
@@ -214,13 +243,18 @@ class SettingsForm:
             **self._checked_numbers(),
             **self._checked_paths(),
         }
+        # A form that says nothing about the language keeps the default (the environment's, or
+        # Spanish) instead of storing an empty code nobody chose.
+        language = self._checked_language()
+        if language is not None:
+            values["language"] = language
         return None if self.errors else AppSettings(**values)
 
     def _checked_engine_url(self) -> str:
         """The engine's address as the client wants it, without its trailing slash."""
         url = self.engine_url.strip().rstrip("/")
         if not _is_http_url(url):
-            self.errors["engine_url"] = (
+            self.errors["engine_url"] = self._t(
                 "Debe ser una URL http:// o https://, como http://127.0.0.1:6878."
             )
         return url
@@ -229,7 +263,7 @@ class SettingsForm:
         """The searcher's address, or None to mean "wherever the engine serves it"."""
         url = self.search_url.strip().rstrip("/")
         if url and not _is_http_url(url):
-            self.errors["search_url"] = (
+            self.errors["search_url"] = self._t(
                 "Debe ser una URL http:// o https://, o quedar vacío para usar la del engine."
             )
         return url or None
@@ -245,8 +279,10 @@ class SettingsForm:
             except ValueError:
                 number = None
             if number is None or not low <= number <= high:
-                kind = "un número entero" if whole else "un número"
-                self.errors[name] = f"Debe ser {kind} entre {low} y {high}."
+                kind = self._t("un número entero" if whole else "un número")
+                self.errors[name] = self._t("Debe ser {kind} entre {low} y {high}.").format(
+                    kind=kind, low=low, high=high
+                )
             numbers[name] = number
         return numbers
 
@@ -257,6 +293,16 @@ class SettingsForm:
             # "Copy as path" on Windows wraps the path in quotes, and people paste them back.
             path = getattr(self, name).strip().strip('"')
             if path and not Path(path).is_file():
-                self.errors[name] = "No existe ese archivo."
+                self.errors[name] = self._t("No existe ese archivo.")
             paths[name] = path or None
         return paths
+
+    def _checked_language(self) -> str | None:
+        """The language chosen from the list, or None when the form does not mention one."""
+        chosen = self.language.strip()
+        if chosen and chosen not in LANGUAGES:
+            self.errors["language"] = self._t(
+                "Idioma desconocido: elige uno de estos: {languages}."
+            ).format(languages=", ".join(LANGUAGES))
+            return None
+        return chosen or None

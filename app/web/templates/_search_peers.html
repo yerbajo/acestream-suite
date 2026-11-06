@@ -4,6 +4,6 @@
 <span class="hint">{{ error }}</span>
 {% else %}
 {% set peers = result.peers if result.peers is not none else "—" %}
-<strong>{{ peers }}</strong> pares
-<span class="hint">{{ status_labels[result.status] }} ahora</span>
+<strong>{{ peers }}</strong> {{ t("pares") }}
+<span class="hint">{{ t("{status} ahora").format(status=t(status_labels[result.status])) }}</span>
 {% endif %}

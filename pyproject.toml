@@ -39,6 +39,9 @@ include = ["app*"]
 
 [tool.setuptools.package-data]
 "app.web" = ["templates/**/*.html", "static/*"]
+# Los catálogos de idioma son datos del paquete: sin esta línea, una instalación no editable (o el
+# ejecutable de Windows, si algún día se empaqueta) se quedaría sin ellos y en español para siempre.
+"app.i18n" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

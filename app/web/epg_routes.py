@@ -25,11 +25,12 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from app.i18n import translate
 from app.services import epg_guide, epg_matching, epg_output
 from app.services.channels import get_channel
 from app.services.errors import NotFoundError
 from app.web.deps import SessionDep
-from app.web.templating import templates
+from app.web.templating import language_in_force, templates
 
 router = APIRouter()
 
@@ -51,12 +52,14 @@ def _back_to_mapping(request: Request) -> RedirectResponse:
     return RedirectResponse(request.url_for("epg_mapping"), status_code=303)
 
 
-def _existing_channel(session: Session, channel_id: int):
+def _existing_channel(session: Session, channel_id: int, language: str):
     """The catalogue channel, or a 404 for the page that asked for it."""
     try:
         return get_channel(session, channel_id)
     except NotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Canal no encontrado") from exc
+        raise HTTPException(
+            status_code=404, detail=translate("Canal no encontrado", language)
+        ) from exc
 
 
 def _page_number(asked: int) -> int:
@@ -77,7 +80,7 @@ def channel_guide(request: Request, session: SessionDep, channel_id: int):
     title and a different reason line: the two look alike on screen and are not the same thing to
     fix.
     """
-    channel = _existing_channel(session, channel_id)
+    channel = _existing_channel(session, channel_id, language_in_force(request))
     now = datetime.now(UTC)
     guide_id = channel.guide_channel_id
     rows = epg_guide.day_grid(session, guide_id, now=now) if guide_id is not None else []
@@ -136,7 +139,10 @@ def epg_mapping_set(
     try:
         epg_matching.set_alias(session, channel_id, int(guide_id))
     except NotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Canal o guía no encontrados") from exc
+        raise HTTPException(
+            status_code=404,
+            detail=translate("Canal o guía no encontrados", language_in_force(request)),
+        ) from exc
     return _back_to_mapping(request)
 
 
@@ -146,7 +152,9 @@ def epg_mapping_clear(request: Request, session: SessionDep, channel_id: int):
     try:
         epg_matching.clear_alias(session, channel_id)
     except NotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Canal no encontrado") from exc
+        raise HTTPException(
+            status_code=404, detail=translate("Canal no encontrado", language_in_force(request))
+        ) from exc
     return _back_to_mapping(request)
 
 

@@ -1,6 +1,9 @@
+import json
+
 import httpx
 import pytest
 
+from app import i18n
 from app.main import app
 from app.services import channels
 from app.services.settings import AppSettings, load_settings, save_settings
@@ -8,6 +11,16 @@ from app.web import settings_routes
 from app.web.deps import get_engine_factory
 
 HASH_A = "78266c15035d0ad8cbc58f821733931e1de434ab"
+
+# The one long sentence of the reference catalog: the settings page's hint about the environment
+# variable, and the string the page renders through `t`.
+HINT = next(
+    text
+    for text in json.loads(
+        (i18n.CATALOG_DIR / "catalog.reference.json").read_text(encoding="utf-8")
+    )
+    if "ACESTREAM_SUITE_LANGUAGE" in text
+)
 
 
 @pytest.fixture
@@ -176,3 +189,48 @@ def test_settings_writes_from_other_sites_are_rejected(web, db, detected):
 
     assert response.status_code == 403
     assert load_settings(db).min_peers == AppSettings().min_peers
+
+
+def test_the_page_offers_the_eight_languages_and_marks_the_saved_one(web, db, detected):
+    save_settings(db, AppSettings(language="fr"))
+
+    page = web.get("/settings").text
+
+    assert '<select id="language" name="language">' in page
+    for code, name in i18n.LANGUAGES.items():
+        assert f'<option value="{code}"' in page
+        assert f">{name}</option>" in page
+    assert '<option value="fr" selected>Français</option>' in page
+
+
+def test_saving_the_language_stores_it(web, db, detected):
+    response = web.post("/settings", data=form(language="zh"), follow_redirects=False)
+
+    assert response.status_code == 303
+    assert load_settings(db).language == "zh"
+
+
+def test_an_unknown_language_is_explained_and_nothing_is_saved(web, db, detected):
+    response = web.post("/settings", data=form(language="pt-BR"))
+
+    assert response.status_code == 422
+    assert (
+        "Idioma desconocido: elige uno de estos: es, en, fr, it, de, ru, zh, ja." in response.text
+    )
+    assert load_settings(db) == AppSettings()
+
+
+def test_the_page_is_drawn_in_the_saved_language_without_a_restart(
+    web, db, detected, catalogs, monkeypatch
+):
+    """The language is read from the settings on every request, never once at import."""
+    catalogs("en", {HINT: "Spanish is the default; the variable counts until you save a language."})
+    # The environment says German, and the saved value is still what wins.
+    monkeypatch.setenv("ACESTREAM_SUITE_LANGUAGE", "de")
+    assert HINT in web.get("/settings").text
+
+    web.post("/settings", data=form(language="en"))
+
+    page = web.get("/settings").text
+    assert "Spanish is the default; the variable counts until you save a language." in page
+    assert HINT not in page
