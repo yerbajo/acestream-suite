@@ -32,12 +32,16 @@ ist Software eines Dritten und behält ihren eigenen Namen.
 
 ## Screenshots
 
-<p align="center"><img src="assets/screenshots/de.webp" alt="Die Kanalliste, auf Deutsch" width="900"></p>
+<p align="center"><img src="assets/screenshots/de-list.webp" alt="Die Kanalliste, auf Deutsch" width="900"></p>
 
 Die Oberfläche gibt es in acht Sprachen. Der Umschalter oben wechselt das README; die Sprache der
 Anwendung selbst wird in den **Einstellungen** oder über `ACESTREAM_SUITE_LANGUAGE` gewählt (`es`,
 `en`, `fr`, `it`, `de`, `ru`, `zh`, `ja`). Je ein Screenshot pro Sprache liegt in
 `assets/screenshots/`.
+
+| Galerie | Programmführer | Suche | Einstellungen |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/de-gallery.webp" width="330"> | <img src="assets/screenshots/de-guide.webp" width="330"> | <img src="assets/screenshots/de-search.webp" width="330"> | <img src="assets/screenshots/de-settings.webp" width="330"> |
 
 ## Schnellstart (Docker)
 

@@ -29,11 +29,15 @@
 
 ## Скриншоты
 
-<p align="center"><img src="assets/screenshots/ru.webp" alt="Список каналов на русском" width="900"></p>
+<p align="center"><img src="assets/screenshots/ru-list.webp" alt="Список каналов на русском" width="900"></p>
 
 Интерфейс переведён на восемь языков. Переключатель выше меняет сам README; язык приложения
 выбирается в **Настройках** или переменной `ACESTREAM_SUITE_LANGUAGE` (`es`, `en`, `fr`, `it`, `de`,
 `ru`, `zh`, `ja`). По одному скриншоту на язык лежит в `assets/screenshots/`.
+
+| Галерея | Гид | Поиск | Настройки |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/ru-gallery.webp" width="330"> | <img src="assets/screenshots/ru-guide.webp" width="330"> | <img src="assets/screenshots/ru-search.webp" width="330"> | <img src="assets/screenshots/ru-settings.webp" width="330"> |
 
 ## Быстрый старт (Docker)
 

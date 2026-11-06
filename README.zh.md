@@ -27,11 +27,15 @@ Content ID、针对引擎的可用性检查、每个频道抓取的一帧画面�
 
 ## 截图
 
-<p align="center"><img src="assets/screenshots/zh.webp" alt="频道列表（中文界面）" width="900"></p>
+<p align="center"><img src="assets/screenshots/zh-list.webp" alt="频道列表（中文界面）" width="900"></p>
 
 界面提供八种语言。页面顶部的切换器切换的是 README；应用本身的语言在**设置**中选择，或通过
 `ACESTREAM_SUITE_LANGUAGE` 指定（`es`、`en`、`fr`、`it`、`de`、`ru`、`zh`、`ja`）。每种语言一张截图，
 放在 `assets/screenshots/`。
+
+| 画廊 | 指南 | 搜索 | 设置 |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/zh-gallery.webp" width="330"> | <img src="assets/screenshots/zh-guide.webp" width="330"> | <img src="assets/screenshots/zh-search.webp" width="330"> | <img src="assets/screenshots/zh-settings.webp" width="330"> |
 
 ## 快速开始（Docker）
 

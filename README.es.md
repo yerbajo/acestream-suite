@@ -29,11 +29,15 @@ software de terceros y conserva su propio nombre.
 
 ## Capturas de pantalla
 
-<p align="center"><img src="assets/screenshots/es.webp" alt="La lista de canales, en español" width="900"></p>
+<p align="center"><img src="assets/screenshots/es-list.webp" alt="La lista de canales, en español" width="900"></p>
 
 La interfaz está escrita en ocho idiomas. El conmutador de arriba cambia el README; el idioma de la
 aplicación se elige en **Ajustes** o con `ACESTREAM_SUITE_LANGUAGE` (`es`, `en`, `fr`, `it`, `de`,
 `ru`, `zh`, `ja`). Hay una captura por idioma en `assets/screenshots/`.
+
+| Galería | Guía | Buscar | Ajustes |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/es-gallery.webp" width="330"> | <img src="assets/screenshots/es-guide.webp" width="330"> | <img src="assets/screenshots/es-search.webp" width="330"> | <img src="assets/screenshots/es-settings.webp" width="330"> |
 
 ## Inicio rápido (Docker)
 

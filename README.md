@@ -29,12 +29,16 @@ third-party software and keeps its own name.
 
 ## Screenshots
 
-<p align="center"><img src="assets/screenshots/en.webp" alt="The channel list, in English" width="900"></p>
+<p align="center"><img src="assets/screenshots/en-list.webp" alt="The channel list, in English" width="900"></p>
 
 The interface is written in eight languages. The switcher at the top of this page changes the
 README; the language of the application itself is chosen in **Settings** or with
 `ACESTREAM_SUITE_LANGUAGE` (`es`, `en`, `fr`, `it`, `de`, `ru`, `zh`, `ja`). One screenshot per
 language is in `assets/screenshots/`.
+
+| Gallery | Guide | Search | Settings |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/en-gallery.webp" width="330"> | <img src="assets/screenshots/en-guide.webp" width="330"> | <img src="assets/screenshots/en-search.webp" width="330"> | <img src="assets/screenshots/en-settings.webp" width="330"> |
 
 ## Quickstart (Docker)
 

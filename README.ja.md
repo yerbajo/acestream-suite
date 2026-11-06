@@ -31,11 +31,15 @@
 
 ## スクリーンショット
 
-<p align="center"><img src="assets/screenshots/ja.webp" alt="チャンネル一覧（日本語インターフェース）" width="900"></p>
+<p align="center"><img src="assets/screenshots/ja-list.webp" alt="チャンネル一覧（日本語インターフェース）" width="900"></p>
 
 インターフェースは8言語に対応しています。ページ上部の切り替えはREADMEを切り替えるもので、アプリ
 本体の言語は**設定**または `ACESTREAM_SUITE_LANGUAGE` で選びます（`es`, `en`, `fr`, `it`, `de`,
 `ru`, `zh`, `ja`）。言語ごとのスクリーンショットは `assets/screenshots/` にあります。
+
+| ギャラリー | 番組表 | 検索 | 設定 |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/ja-gallery.webp" width="330"> | <img src="assets/screenshots/ja-guide.webp" width="330"> | <img src="assets/screenshots/ja-search.webp" width="330"> | <img src="assets/screenshots/ja-settings.webp" width="330"> |
 
 ## クイックスタート（Docker）
 

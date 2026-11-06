@@ -31,11 +31,15 @@ logiciel tiers et conserve son propre nom.
 
 ## Captures d'écran
 
-<p align="center"><img src="assets/screenshots/fr.webp" alt="La liste des chaînes, en français" width="900"></p>
+<p align="center"><img src="assets/screenshots/fr-list.webp" alt="La liste des chaînes, en français" width="900"></p>
 
 L'interface existe en huit langues. Le sélecteur en haut de page change le README ; la langue de
 l'application se choisit dans **Réglages** ou avec `ACESTREAM_SUITE_LANGUAGE` (`es`, `en`, `fr`, `it`,
 `de`, `ru`, `zh`, `ja`). Une capture par langue se trouve dans `assets/screenshots/`.
+
+| Galerie | Guide | Rechercher | Réglages |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/fr-gallery.webp" width="330"> | <img src="assets/screenshots/fr-guide.webp" width="330"> | <img src="assets/screenshots/fr-search.webp" width="330"> | <img src="assets/screenshots/fr-settings.webp" width="330"> |
 
 ## Démarrage rapide (Docker)
 

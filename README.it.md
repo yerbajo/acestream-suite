@@ -29,11 +29,15 @@ software di terze parti e mantiene il proprio nome.
 
 ## Screenshot
 
-<p align="center"><img src="assets/screenshots/it.webp" alt="L'elenco dei canali, in italiano" width="900"></p>
+<p align="center"><img src="assets/screenshots/it-list.webp" alt="L'elenco dei canali, in italiano" width="900"></p>
 
 L'interfaccia è disponibile in otto lingue. Il selettore in alto cambia il README; la lingua
 dell'applicazione si sceglie in **Impostazioni** o con `ACESTREAM_SUITE_LANGUAGE` (`es`, `en`, `fr`,
 `it`, `de`, `ru`, `zh`, `ja`). C'è uno screenshot per lingua in `assets/screenshots/`.
+
+| Galleria | Guida | Cerca | Impostazioni |
+|:---:|:---:|:---:|:---:|
+| <img src="assets/screenshots/it-gallery.webp" width="330"> | <img src="assets/screenshots/it-guide.webp" width="330"> | <img src="assets/screenshots/it-search.webp" width="330"> | <img src="assets/screenshots/it-settings.webp" width="330"> |
 
 ## Avvio rapido (Docker)
 
