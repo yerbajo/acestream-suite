@@ -26,7 +26,21 @@ This license covers the work authored in this repository: the application code,
 the deployment files, the scripts under `scripts/`, the documentation and the
 logo.
 
-The application's behaviour was modelled on the **AceList** project, which
-publishes no license of its own. `NOTICE.md` records that provenance, what the
-rewrite changed and what it deliberately did not, and where the AceStream name
-and mark come from.
+The idea and the base of the application come from **AceList**, by fabiomb:
+https://github.com/fabiomb/AceList — a local catalogue of AceStream links, which
+this project extends into a suite. That project **publishes no license**, and
+nothing here grants one for its work.
+
+What this project adds to that base is its own: the guide (EPG) layer, the search
+page over the engine's index, the HLS bridge and the host jobs that feed the
+playlists, the settings, the packaging and the logo. The code in `app/` has also
+been rewritten in its expression, phase by phase and with the test suite as the
+oracle; the behaviour is modelled on
+AceList and the HTTP surface, the database schema and the user-facing strings are
+deliberately the same.
+
+If you redistribute this repository or an image built from it, you are
+redistributing work derived from an unlicensed project. That is a question for
+its author, not for this file.
+
+The AceStream name and the mark inside the logo belong to their owner.

@@ -4,6 +4,10 @@
 
 <p align="center"><img src="assets/logo-3d.png" alt="acestream-suite" width="560"></p>
 
+**Origin.** The idea and the base of this application come from the **AceList** project
+(<https://github.com/fabiomb/AceList>): a local catalogue of AceStream links. This suite is that idea
+extended with components of its own, and `LICENSE` records what that means if you redistribute it.
+
 A self-hosted web front end for an **AceStream** engine. It keeps a catalogue of `acestream://`
 links — channels with their Content ID, an availability check against the engine, a captured frame
 of each one, categories, languages and countries — and adds four things around that catalogue:
@@ -204,9 +208,10 @@ checks with no network and no files. The playlist jobs need a web server serving
 ## License and third-party notices
 
 The work authored here — the deployment files, the scripts, the documentation, the logo and the
-application code — is MIT-licensed; see `LICENSE`. The same file records the provenance of the
-application code (it started from the **AceList** project, which publishes no license) and where the
-AceStream mark inside the logo comes from. Read it before redistributing an image built here. The
+application code — is MIT-licensed; see `LICENSE`. The same file records where the idea and the base
+come from: **AceList** (<https://github.com/fabiomb/AceList>), which publishes no license of its own,
+and what that means for redistribution. It also says where the AceStream mark inside the logo comes
+from. Read it before redistributing an image built here. The
 image also installs third-party software: `python:3.12-slim`, the Debian packages (`ffmpeg`, `curl`),
 and the Python dependencies in `pyproject.toml`, each under its own license; `htmx` (BSD-2-Clause) and
 the Lucide icon strokes (ISC) are vendored in `app/web/`.

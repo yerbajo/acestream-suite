@@ -4,6 +4,10 @@
 
 <p align="center"><img src="assets/logo-3d.png" alt="acestream-suite" width="560"></p>
 
+**Origen.** La idea y la base de esta aplicación vienen del proyecto **AceList**
+(<https://github.com/fabiomb/AceList>): un catálogo local de enlaces AceStream. Esta suite es esa idea
+ampliada con componentes propios, y `LICENSE` deja constancia de lo que eso significa si la redistribuyes.
+
 Un front end web autoalojado para un motor **AceStream**. Mantiene un catálogo de enlaces
 `acestream://` — canales con su Content ID, una comprobación de disponibilidad contra el motor, una
 captura de cada uno, categorías, idiomas y países — y añade cuatro cosas alrededor de ese catálogo:
@@ -210,8 +214,9 @@ contenedor (`docker exec acestream-suite python3 -m app.cli epg-refresh`).
 
 El trabajo propio de este repositorio — los ficheros de despliegue, los scripts, la documentación, el
 logotipo y el código de la aplicación — tiene licencia MIT; ver `LICENSE`. Ese mismo fichero deja
-constancia de la procedencia del código (nació del proyecto **AceList**, que no publica licencia) y del
-origen de la marca de AceStream dentro del logotipo. Léelo antes de redistribuir una imagen construida
+constancia de dónde vienen la idea y la base: **AceList** (<https://github.com/fabiomb/AceList>), que no
+publica licencia propia, y de lo que eso significa para redistribuir. También dice de dónde sale la
+marca de AceStream dentro del logotipo. Léelo antes de redistribuir una imagen construida
 aquí. La imagen instala además software de terceros: `python:3.12-slim`, los paquetes de Debian
 (`ffmpeg`, `curl`) y las dependencias de `pyproject.toml`, cada uno con su licencia; `htmx`
 (BSD-2-Clause) y los trazos de Lucide (ISC) están vendorizados en `app/web/`.
