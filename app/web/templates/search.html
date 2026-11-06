@@ -1,12 +1,30 @@
 {% extends "base.html" %}
 
-{# Los mismos macros que las otras páginas con formulario, atados a `errors` como en `import.html`:
-   sin ellos, una búsqueda con un error de categoría rompía la página entera (500). #}
+{# The field macros of every form page, bound to `errors` the way `import.html` binds them: without
+   them a search whose category was refused answered 500 instead of showing the error. #}
 {% macro field_error(name) %}
   {% if errors[name] %}<p class="field-error" id="{{ name }}-error">{{ errors[name] }}</p>{% endif %}
 {% endmacro %}
 
 {% macro invalid(name) %}{% if errors[name] %} aria-invalid="true" aria-describedby="{{ name }}-error"{% endif %}{% endmacro %}
+
+{# One of the two ISO selects. They differ only in the list of options, the label and the case the
+   stored code is written in, so they differ only in their arguments here. The whitespace control is
+   what makes the two calls render exactly like the two blocks they replace. #}
+{% macro code_field(name, label, unsaid, choices, upper=false) -%}
+{%- set posted = values[name] or '' -%}
+{%- if upper %}{% set posted = posted|upper %}{% else %}{% set posted = posted|lower %}{% endif -%}
+<div class="field">
+        <label for="{{ name }}">{{ label }}</label>
+        <select id="{{ name }}" name="{{ name }}"{{ invalid(name) }}>
+          <option value="">Sin {{ unsaid }}</option>
+          {% for code, choice in choices %}
+          <option value="{{ code }}"{% if posted == code %} selected{% endif %}>{{ choice }} ({{ code }})</option>
+          {% endfor %}
+        </select>
+        {{ field_error(name) }}
+      </div>
+{%- endmacro %}
 
 {% block title %}Buscar · acestream-suite{% endblock %}
 
@@ -70,8 +88,9 @@
       <tbody>
         {% for hit in hits %}
         <tr>
-          {#- El enlace va delante: el importador lee como comentario cualquier línea que empiece por
-              `#`, y hay canales del índice que se llaman así (`#VAMOS FHD --> NEW ERA`). -#}
+          {#- Link before title, deliberately: the importer treats a line starting with `#` as a
+              comment, and the index carries channels named like that (`#VAMOS FHD --> NEW ERA`).
+              With the title first, marking one of them added nothing at all. -#}
           <td><input type="checkbox" name="pick"
                      value="acestream://{{ hit.content_id }} | {{ hit.name }}"
                      aria-label="Añadir {{ hit.name }} al catálogo"></td>
@@ -128,26 +147,8 @@
       </div>
     </div>
     <div class="field-row">
-      <div class="field">
-        <label for="language">Idioma</label>
-        <select id="language" name="language"{{ invalid("language") }}>
-          <option value="">Sin idioma</option>
-          {% for code, name in language_choices() %}
-          <option value="{{ code }}"{% if (values.language or '')|lower == code %} selected{% endif %}>{{ name }} ({{ code }})</option>
-          {% endfor %}
-        </select>
-        {{ field_error("language") }}
-      </div>
-      <div class="field">
-        <label for="country">País</label>
-        <select id="country" name="country"{{ invalid("country") }}>
-          <option value="">Sin país</option>
-          {% for code, name in country_choices() %}
-          <option value="{{ code }}"{% if (values.country or '')|upper == code %} selected{% endif %}>{{ name }} ({{ code }})</option>
-          {% endfor %}
-        </select>
-        {{ field_error("country") }}
-      </div>
+      {{ code_field("language", "Idioma", "idioma", language_choices()) }}
+      {{ code_field("country", "País", "país", country_choices(), upper=true) }}
     </div>
     <div class="actions">
       <button type="submit" class="button primary">Añadir al catálogo</button>

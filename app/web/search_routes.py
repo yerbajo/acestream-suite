@@ -1,8 +1,13 @@
-"""Buscador de canales contra acesearch, y lo que se puede hacer con lo que encuentra.
+"""Searching the engine's index, and the three things a person can do with what it finds.
 
-El buscador no es el catálogo: devuelve lo que el índice del motor conoce, con su nombre y su hash, y
-aquí se decide qué hacer con ello — añadirlo al catálogo (con su comprobación en segundo plano, como
-cualquier alta) o probar a reproducirlo antes, que es lo único que dice si el enlace está vivo.
+The index is a second service, not the catalogue: it answers with names and hashes of channels
+that, by definition, are not in this database yet. What this module decides is what happens next —
+add them (which is an ordinary import, background check included), measure one for real, or try to
+play it — plus the page that puts the results in front of somebody.
+
+No measurement is ever invented here. The index publishes no peer count, so a row's peers are
+whatever the catalogue's own last check said, shown with the date of that check; a channel nobody
+has measured says so instead of showing a zero.
 """
 
 from typing import Annotated
@@ -36,13 +41,20 @@ from app.web.templating import templates
 router = APIRouter(prefix="/search")
 
 FormField = Annotated[str, Form()]
-# Un POST puede marcar media pantalla; el mismo tope que una importación de enlaces.
+
+# A POST can carry half a screen of marked rows, and this is the same ceiling an import of links
+# gets: the form is a screen, not a bulk door.
 MAX_PICKS = 60
-# Lo que viaja en cada casilla: `Título | acestream://hash`, que es una línea del importador.
+# What one checkbox sends: `Title | acestream://hash`, which is a single line of an import.
 LINK_PREFIX = "acestream://"
+# A checkbox value is one line of text. Anything far longer was not made by this form.
+_LINE_CEILING = 300
+
+# The two ISO codes the add form posts, each with the normaliser that judges it.
+_CODE_FIELDS = (("language", normalize_language), ("country", normalize_country))
 
 
-def _render(
+def _page(
     request: Request,
     session,
     *,
@@ -55,6 +67,11 @@ def _render(
     known=None,
     engine_down: bool = False,
 ) -> HTMLResponse:
+    """The search page with everything the template reads, and 422 whenever it has errors to show.
+
+    One builder for every answer of the three GET/POST paths, so a context key cannot exist on one
+    of them and be missing on another; a missing key is a 500 when the template reads it.
+    """
     return templates.TemplateResponse(
         request,
         "search.html",
@@ -73,11 +90,12 @@ def _render(
     )
 
 
-def _known_checks(session, content_ids: list[str]) -> dict[str, object]:
-    """La última comprobación de los hashes que ya están en el catálogo, por Content ID.
+def _catalogue_measurements(session, content_ids: list[str]) -> dict[str, object]:
+    """The newest stored check of every hit that is already in the catalogue, by Content ID.
 
-    El índice de acesearch no publica pares, así que sin abrir sesión lo único que hay es lo que
-    midió *Comprobar* la última vez. Se enseña con su fecha porque es una foto, no un dato de ahora.
+    The index publishes no peers, so without opening a session the only count that exists is the one
+    *Comprobar* last measured. It travels with its date because it is a photograph of an earlier
+    moment, not a reading taken now.
     """
     if not content_ids:
         return {}
@@ -90,6 +108,15 @@ def _known_checks(session, content_ids: list[str]) -> dict[str, object]:
     }
 
 
+def _ask_index(settings, query: str, limit: int) -> tuple[list, str | None]:
+    """The hits for this query, or the sentence that replaces them when the index did not answer."""
+    try:
+        with SearchClient(settings.resolved_search_url, timeout=settings.engine_timeout) as client:
+            return client.search(query, limit=limit), None
+    except SearchError as exc:
+        return [], f"No se pudo buscar: {exc}"
+
+
 @router.get("", response_class=HTMLResponse, name="search_page")
 def search_page(
     request: Request,
@@ -98,63 +125,82 @@ def search_page(
     q: str = "",
     limit: int = 60,
 ):
-    """La página de búsqueda: con `q` busca, sin `q` solo se dibuja."""
+    """The search page: with `q` it searches the index, without `q` it only draws the form.
+
+    A search that fails is not an error page — the box keeps what was typed and the reason is shown
+    under it — because the usual cause is the URL in the settings, which is fixable right there.
+    """
     query = " ".join(q.split())
+    values = {"limit": limit}
     if not query:
-        return _render(request, session, values={"limit": limit})
-    try:
-        with SearchClient(settings.resolved_search_url, timeout=settings.engine_timeout) as client:
-            hits = client.search(query, limit=limit)
-    except SearchError as exc:
-        return _render(
-            request,
-            session,
-            query=query,
-            problem=f"No se pudo buscar: {exc}",
-            values={"limit": limit},
-        )
-    known = _known_checks(session, [hit.content_id for hit in hits])
-    return _render(
-        request, session, query=query, hits=hits, values={"limit": limit}, known=known
-    )
+        return _page(request, session, values=values)
+    hits, problem = _ask_index(settings, query, limit)
+    if problem:
+        return _page(request, session, query=query, problem=problem, values=values)
+    known = _catalogue_measurements(session, [hit.content_id for hit in hits])
+    return _page(request, session, query=query, hits=hits, values=values, known=known)
 
 
-def _picks_to_links(picks: list[str]) -> str:
-    """Una línea por casilla marcada, en el formato que ya lee el importador."""
+def _picked_lines(picks: list[str]) -> str:
+    """The marked rows as the text the importer already reads: one link per line.
+
+    A pick that carries no link, or one far longer than a line, is not something this form sent and
+    is dropped rather than passed on to be rejected one row at a time.
+    """
     lines = []
     for pick in picks[:MAX_PICKS]:
         line = " ".join(str(pick or "").split())
-        if LINK_PREFIX in line and len(line) <= 300:
+        if LINK_PREFIX in line and len(line) <= _LINE_CEILING:
             lines.append(line)
     return "\n".join(lines)
 
 
-@router.post("/peers", response_class=HTMLResponse, name="search_peers")
-def search_peers(
-    request: Request,
-    client: EngineDep,
-    settings: SettingsDep,
-    content_id: FormField = "",
-):
-    """Mide los pares de ese hash de verdad: abre una sesión en el motor y la cierra.
+def _category_pick(session, category_id: str, new_category: str) -> tuple[int | None, str | None]:
+    """The category to store, and the complaint when the posted one names no category.
 
-    Es la comprobación de *Comprobar*, sin guardar nada: el buscador no es el catálogo. Cuesta unos
-    segundos y una sesión del motor, por eso es un botón por fila y no una columna.
+    A name typed by hand wins over the list, exactly as on the channel form: it is the more specific
+    of the two answers, and `resolve_category` either creates it or reuses the one already called
+    that. What is refused is a posted id with no row behind it — the catalogue has no such category.
     """
-    result = None
-    error = None
-    try:
-        result = verification.verify(client, content_id, settings.verification())
-    except InvalidContentIdError:
-        error = "Ese Content ID no es válido."
-    except EngineUnavailableError:
-        error = f"El engine de Ace Stream no responde en {settings.engine_url}."
-    return templates.TemplateResponse(
-        request,
-        "_search_peers.html",
-        {"result": result, "error": error},
-        status_code=503 if error else 200,
+    if new_category.strip():
+        return None, None
+    posted = int(category_id) if category_id.isdigit() else None
+    unknown = category_id and (posted is None or session.get(Category, posted) is None)
+    return posted, "La categoría elegida no existe." if unknown else None
+
+
+def _code_problems(values: dict[str, str]) -> dict[str, str]:
+    """The language and country fields that are not codes the catalogue knows."""
+    problems = {}
+    for field, normalize in _CODE_FIELDS:
+        try:
+            normalize(values[field])
+        except ValidationError:
+            problems[field] = "Código desconocido."
+    return problems
+
+
+def _queue_first_checks(
+    created: list[int], runner, session_factory, engine_factory, settings, probe
+) -> bool:
+    """Start the background check of the new channels, and report whether the engine was there.
+
+    A channel is checked from the page that created it, like any other creation, so an engine that
+    does not answer must not cost the rows: the import stays written and only the checks wait.
+    """
+    if not created:
+        return True
+    if probe() is None:
+        return False
+    start_checks(
+        runner,
+        created,
+        session_factory,
+        engine_factory,
+        settings,
+        screenshots=Screenshots.IF_MISSING,
     )
+    return True
 
 
 @router.post("/add", response_class=HTMLResponse, name="search_add")
@@ -173,25 +219,21 @@ def search_add(
     language: FormField = "",
     country: FormField = "",
 ):
-    """Los resultados marcados, al catálogo: la misma alta que una importación de enlaces."""
-    values = {"category_id": category_id, "new_category": new_category, "language": language,
-              "country": country}
-    text = _picks_to_links(pick or [])
-    errors = {}
-    if not text:
-        errors["pick"] = "Marca al menos un resultado."
-    chosen = int(category_id) if category_id.isdigit() else None
-    if new_category.strip():
-        chosen = None  # el nombre escrito gana, como en el formulario de canal
-    elif category_id and (chosen is None or session.get(Category, chosen) is None):
-        errors["category_id"] = "La categoría elegida no existe."
-    for name, normalize in (("language", normalize_language), ("country", normalize_country)):
-        try:
-            normalize(values[name])
-        except ValidationError:
-            errors[name] = "Código desconocido."
-    if errors:
-        return _render(request, session, query=query, errors=errors, values=values)
+    """The marked results, added to the catalogue: the same import a pasted list of links gets."""
+    values = {
+        "category_id": category_id,
+        "new_category": new_category,
+        "language": language,
+        "country": country,
+    }
+    text = _picked_lines(pick or [])
+    chosen, category_problem = _category_pick(session, category_id, new_category)
+    problems = {} if text else {"pick": "Marca al menos un resultado."}
+    if category_problem:
+        problems["category_id"] = category_problem
+    problems |= _code_problems(values)
+    if problems:
+        return _page(request, session, query=query, errors=problems, values=values)
 
     try:
         result = importer.import_links(
@@ -202,23 +244,65 @@ def search_add(
             country=country,
         )
     except ServiceError as exc:
-        return _render(request, session, query=query, errors={"pick": f"No se pudo añadir: {exc}"})
+        return _page(request, session, query=query, errors={"pick": f"No se pudo añadir: {exc}"})
 
-    # Un canal nuevo se verifica en segundo plano, como cualquier alta; si el engine no está, el alta
-    # se queda hecha y solo esperan las comprobaciones.
     created = [channel.id for channel in result.created]
-    if created and probe() is None:
-        return _render(request, session, query=query, result=result, engine_down=True)
-    if created:
-        start_checks(
-            runner,
-            created,
-            session_factory,
-            engine_factory,
-            settings,
-            screenshots=Screenshots.IF_MISSING,
+    reachable = _queue_first_checks(
+        created, runner, session_factory, engine_factory, settings, probe
+    )
+    return _page(request, session, query=query, result=result, engine_down=not reachable)
+
+
+@router.post("/peers", response_class=HTMLResponse, name="search_peers")
+def search_peers(
+    request: Request,
+    client: EngineDep,
+    settings: SettingsDep,
+    content_id: FormField = "",
+):
+    """Measure the peers of that hash for real: open an engine session and close it again.
+
+    It is *Comprobar* with nothing stored, because the index is not the catalogue. It costs a few
+    seconds and one engine session, which is why it is a button on a row rather than a column.
+    """
+    result = None
+    error = None
+    try:
+        result = verification.verify(client, content_id, settings.verification())
+    except InvalidContentIdError:
+        error = "Ese Content ID no es válido."
+    except EngineUnavailableError:
+        error = f"El engine de Ace Stream no responde en {settings.engine_url}."
+    return templates.TemplateResponse(
+        request,
+        "_search_peers.html",
+        {"result": result, "error": error},
+        status_code=503 if error else 200,
+    )
+
+
+def _start_playback(client, settings, content_id: str, name: str):
+    """Start that link in whatever plays it, with the sentence to show when it does not.
+
+    A missing VLC, a dead link and an engine that is not there are three different fixes for the
+    person reading the page, so each one keeps its own message instead of one "no se pudo abrir".
+    """
+    try:
+        stream = player.open_in_player(
+            client, content_id, title=name or None, vlc_path=settings.vlc_path
         )
-    return _render(request, session, query=query, result=result)
+    except player.VlcNotFoundError:
+        return None, "No se encontró VLC. Instálalo o indica la ruta de vlc.exe en Ajustes."
+    except ContentNotFoundError:
+        return None, "El engine no pudo cargar este Content ID: puede que el enlace haya muerto."
+    except EngineError:
+        return None, (
+            f"El engine de Ace Stream no responde en {settings.engine_url}. "
+            "¿Está abierto Ace Stream?"
+        )
+    except player.PlayerError as exc:
+        return None, f"No se pudo abrir VLC: {exc}"
+    return stream, None
 
 
 @router.post("/play", response_class=HTMLResponse, name="search_play")
@@ -229,35 +313,19 @@ def search_play(
     content_id: FormField = "",
     name: FormField = "",
 ):
-    """Arranca ese enlace en el engine y devuelve la URL (o abre VLC), sin darlo de alta.
+    """Play that link in the engine and hand the URL over, without adding it to the catalogue.
 
-    Es la prueba que vale: el índice puede tener un enlace muerto, y esto abre una sesión real.
+    This is the only test that really answers the question: the index may well list a link that is
+    dead, and opening a session is what tells the two apart.
     """
-    stream = None
-    try:
-        stream = player.open_in_player(
-            client, content_id, title=name or None, vlc_path=settings.vlc_path
-        )
-    except player.VlcNotFoundError:
-        error = "No se encontró VLC. Instálalo o indica la ruta de vlc.exe en Ajustes."
-    except ContentNotFoundError:
-        error = "El engine no pudo cargar este Content ID: puede que el enlace haya muerto."
-    except EngineError:
-        error = (
-            f"El engine de Ace Stream no responde en {settings.engine_url}. "
-            "¿Está abierto Ace Stream?"
-        )
-    except player.PlayerError as exc:
-        error = f"No se pudo abrir VLC: {exc}"
-    else:
-        error = None
+    stream, error = _start_playback(client, settings, content_id, name)
     return templates.TemplateResponse(
         request,
         "_search_play.html",
         {
             "name": name,
             "error": error,
-            # None en modo "vlc", donde la URL fue al reproductor y no al navegador.
+            # None in "vlc" mode, where the URL went to the player and never to the browser.
             "playback_url": stream.playback_url if stream else None,
             "mode": PLAYBACK_MODE,
         },

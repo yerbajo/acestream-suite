@@ -1,3 +1,5 @@
+{#- The answer to the play button of one row: exactly one notice. A stream that went to the player
+   itself has no URL to link to, and that is the only way the third line is reached. -#}
 {% if error %}
 <p class="notice notice-error" role="alert">{{ error }}</p>
 {% elif playback_url %}
