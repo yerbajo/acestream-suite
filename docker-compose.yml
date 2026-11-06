@@ -98,10 +98,9 @@ services:
       # a 24 MB refresh every 12 h from piling up (measured: a full refresh is ~1 min and ~25,000
       # programmes in the window, and it deletes what has gone past as it goes).
       - ACESTREAM_SUITE_EPG_WINDOW_HOURS=${ACESTREAM_SUITE_EPG_WINDOW_HOURS:-72}
-      # How often the refresh is MEANT to run. Nothing reads it yet: the refresh is a command, and
-      # `scripts/acestream-suite-guide-refresh.cron` carries the same interval by hand (04:07 and 16:07).
-      # It sits here so the interval is decided in one place and visible in the deployment.
-      - ACESTREAM_SUITE_EPG_REFRESH_HOURS=${ACESTREAM_SUITE_EPG_REFRESH_HOURS:-12}
+      # How often the guide refreshes is NOT here: the refresh is a command the host schedules, and
+      # the interval lives in `scripts/acestream-suite-guide-refresh.cron` (04:07 and 16:07). A
+      # variable nobody reads was worse than no variable at all.
     volumes:
       # The whole application state: `acestream-suite.db` (SQLite) and `screenshots/`. `./data`
       # resolves against this file, so a deployment uses

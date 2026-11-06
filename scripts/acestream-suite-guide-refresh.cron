@@ -8,10 +8,9 @@
 # would be one more thing to keep in step with the app. The refresh is a command, and the host
 # already runs a cron for the playlist acestream-suite publishes.
 #
-# The interval is the one the deployment declares: ACESTREAM_SUITE_EPG_REFRESH_HOURS=12 in
-# acestream-suite/docker-compose.yml (la clave del contenedor conserva el segmento EPG; el intervalo,
-# 12 horas, no cambia). A crontab cannot read a compose file, so the two are kept in step by hand —
-# the same coupling acestream-suite-playlist.cron has with its own script. 12 h because the
+# The interval IS this schedule: 04:07 and 16:07 are twelve hours apart, and nothing else declares
+# it (the compose used to carry a variable nobody read; it is gone). Changing how often the guide
+# refreshes means changing this line, in one place. 12 h because the
 # providers publish a day or two of listings and re-cut a few times a day; more often is bandwidth
 # for nothing. Measured on 2026-10-14: a full refresh of both sources is ~1 min and ~25,000
 # programmes in the window, and it prunes what has gone past as it goes.

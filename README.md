@@ -102,7 +102,7 @@ been renamed yet keeps working (the new name wins when both are set).
 
 **Which of these `.env` can set is decided by the compose file.** It interpolates `ENGINE_URL`,
 `ALLOWED_HOSTS`, `PLAYBACK_MODE`, `STREAM_PARAM`, `CHECK_CONCURRENCY`, `PORT`, `EPG_SOURCES`,
-`EPG_WINDOW_HOURS`, `EPG_REFRESH_HOURS` and the bridge's `HLS_ALIASES` — exactly the names
+`EPG_WINDOW_HOURS` and the bridge's `HLS_ALIASES` — exactly the names
 `.env.example` ships. The rest are read by the app but not passed by the compose: they are either
 saved settings in **Ajustes** (engine timeout, search URL, check timeout, minimum peers, screenshot
 timeout, ffmpeg path, VLC path) or values you add to `environment:` in the compose yourself (data
@@ -110,9 +110,9 @@ directory, the guide's timeouts and size cap, the actor name).
 
 Two notes:
 
-- One thing the compose file declares and **no code reads** is `ACESTREAM_SUITE_EPG_REFRESH_HOURS`.
-  It is there so the refresh interval is decided in the deployment; the schedule itself lives in
-  `scripts/acestream-suite-guide-refresh.cron`, which has to be kept in step with it by hand.
+- How often the guide refreshes is not configuration: it is the schedule in
+  `scripts/acestream-suite-guide-refresh.cron` (04:07 and 16:07), and nothing in the container reads
+  an interval. Change that line to change the frequency.
 - The database file is `acestream-suite.db`, inside the data directory the app is pointed at.
 
 ## Data and backups

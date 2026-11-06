@@ -104,7 +104,7 @@ que aún no se ha renombrado sigue funcionando (si están las dos, gana la nueva
 
 **Cuáles de estas puede poner `.env` lo decide el compose.** Interpola `ENGINE_URL`, `ALLOWED_HOSTS`,
 `PLAYBACK_MODE`, `STREAM_PARAM`, `CHECK_CONCURRENCY`, `PORT`, `EPG_SOURCES`, `EPG_WINDOW_HOURS`,
-`EPG_REFRESH_HOURS` y el `HLS_ALIASES` del puente — exactamente los nombres que trae `.env.example`.
+y el `HLS_ALIASES` del puente — exactamente los nombres que trae `.env.example`.
 El resto los lee la app pero el compose no los pasa: o son ajustes guardados en **Ajustes** (timeout
 del motor, URL de búsqueda, timeout de comprobación, peers mínimos, timeout de captura, ruta de
 ffmpeg y de VLC), o valores que añades tú a `environment:` en el compose (directorio de datos, los
@@ -112,10 +112,9 @@ timeouts y el tope de tamaño de la guía, el nombre del actor).
 
 Dos notas:
 
-- Una cosa que el fichero compose declara y **ningún código lee** es
-  `ACESTREAM_SUITE_EPG_REFRESH_HOURS`. Está ahí para que el intervalo del refresco se decida en el
-  despliegue; el horario en sí vive en `scripts/acestream-suite-guide-refresh.cron`, que hay que
-  mantener en paso con ella a mano.
+- Cada cuánto se refresca la guía no es configuración: es el horario de
+  `scripts/acestream-suite-guide-refresh.cron` (04:07 y 16:07), y nada dentro del contenedor lee un
+  intervalo. Para cambiarlo se cambia esa línea.
 - El fichero de base de datos es `acestream-suite.db`, dentro del directorio de datos al que se apunta
   la app.
 
